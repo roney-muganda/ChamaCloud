@@ -12,7 +12,8 @@ from rest_framework.response import Response
 from rest_framework import status
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import get_user_model
-from django.http import JsonResponse
+from django.http import HttpResponse, JsonResponse
+from django.views.decorators.http import require_http_methods
 
 User = get_user_model()
 
@@ -95,8 +96,12 @@ class VerifyOTPView(APIView):
             
         return Response({"error": "Invalid or expired OTP"}, status=status.HTTP_400_BAD_REQUEST)
 
+@require_http_methods(["GET", "HEAD"])
 def health_check(request):
     """FR-A-001: UptimeRobot health check endpoint."""
+    if request.method == "HEAD":
+        return HttpResponse(status=200)
+
     return JsonResponse({
         "status": "healthy", 
         "service": "chama-cloud-api",
