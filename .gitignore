@@ -1,0 +1,49 @@
+# =========================
+# PYTHON / DJANGO (Backend)
+# =========================
+# Virtual Environments
+venv/
+env/
+.venv/
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Database
+*.sqlite3
+*.sqlite3-journal
+
+# Environment variables
+.env
+.env.local
+
+# Django stuff
+staticfiles/
+media/
+
+# =========================
+# NODE / NEXT.JS (Frontend)
+# =========================
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Testing
+coverage/
+
+# Next.js build output
+.next/
+out/
+build/
+
+# =========================
+# OS & EDITOR FILES
+# =========================
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
