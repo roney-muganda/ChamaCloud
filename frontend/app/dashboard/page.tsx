@@ -126,21 +126,30 @@ export default function Dashboard() {
         {/* 3. The Invite Members UI Section */}
         <div className="border-t pt-6">
           <h3 className="text-sm font-bold text-gray-700 mb-2">Invite a Vendor to Chama</h3>
-          <div className="flex gap-2">
+          
+          <form 
+            onSubmit={(e) => {
+              e.preventDefault(); // Prevents Next.js from refreshing the page
+              handleInvite();     // Executes your API call function
+            }} 
+            className="flex gap-2"
+          >
             <input 
               type="text" 
               placeholder="Phone e.g. +254..." 
               className="flex-1 px-3 py-2 border rounded-lg text-sm text-black"
               value={invitePhone}
               onChange={(e) => setInvitePhone(e.target.value)}
+              required
             />
             <button 
-              onClick={handleInvite}
+              type="submit" // Strictly tells the form to execute onSubmit
               className="bg-blue-100 text-blue-700 font-semibold px-4 py-2 rounded-lg text-sm hover:bg-blue-200 transition"
             >
               Invite
             </button>
-          </div>
+          </form>
+          
           {inviteStatus && <p className="text-xs text-green-600 mt-2 font-medium">{inviteStatus}</p>}
         </div>
 

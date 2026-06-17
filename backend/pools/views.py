@@ -77,6 +77,7 @@ class ActivePoolView(APIView):
             
             return Response({
                 "pool_id": pool.id,
+                "group_id": pool.group.id,  
                 "group_name": pool.group.name,
                 "target_amount": pool.target_amount,
                 "collected": pool.current_balance,
@@ -89,13 +90,13 @@ class ActivePoolView(APIView):
             return Response({
                 "error": "You do not have an active pool right now."
             }, status=status.HTTP_404_NOT_FOUND)
+            
         except Pool.MultipleObjectsReturned:
-            # Fallback just in case a group accidentally creates two open pools
             pool = Pool.objects.filter(group__members__vendor=request.user, status='OPEN').first()
             remaining = float(pool.target_amount) - float(pool.current_balance)
             return Response({
                 "pool_id": pool.id,
-                "group_id": pool.group.id,
+                "group_id": pool.group.id,  
                 "group_name": pool.group.name,
                 "target_amount": pool.target_amount,
                 "collected": pool.current_balance,
