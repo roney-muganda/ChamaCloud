@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 // 1. Fix the 'any' error by defining exactly what the backend returns
 interface PoolData {
   pool_id?: number;
+  group_id?: number;
   group_name?: string;
   target_amount?: number;
   collected?: number;
@@ -14,17 +15,17 @@ interface PoolData {
 }
 
 export default function Dashboard() {
-  // Pass the interface to useState
   const [poolData, setPoolData] = useState<PoolData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [invitePhone, setInvitePhone] = useState('');
+  const [inviteStatus, setInviteStatus] = useState('');
 
   useEffect(() => {
-    // 2. Fix the cascading render error by wrapping logic in an async function
+    // This hook only handles loading the initial data
     const fetchActivePool = async () => {
       const token = localStorage.getItem('access_token'); 
       
       if (!token) {
-        // Now this is safely contained within a function call
         setPoolData({ error: "Please log in to view your Chama." });
         setLoading(false);
         return;
@@ -49,9 +50,31 @@ export default function Dashboard() {
       }
     };
 
-    // Execute the async function
     fetchActivePool();
-  }, []);
+  }, []); // End of useEffect
+
+  // 2. The invite handler 
+  const handleInvite = async () => {
+    const token = localStorage.getItem('access_token');
+    if (!invitePhone || !poolData?.group_id) return;
+
+    setInviteStatus('Sending...');
+    try {
+      const res = await fetch(`https://chamacloud-api.onrender.com/api/groups/${poolData.group_id}/invite/`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ phone_numbers: [invitePhone] })
+      });
+      const data = await res.json();
+      setInviteStatus(data.message || 'Invite sent!');
+      setInvitePhone('');
+    } catch (err) {
+      setInviteStatus('Failed to send invite.');
+    }
+  };
 
   if (loading) return <div className="p-6 text-center font-semibold text-gray-600">Loading Chama Data...</div>;
   
@@ -96,9 +119,31 @@ export default function Dashboard() {
           ></div>
         </div>
 
-        <button className="w-full bg-green-600 text-white font-bold py-3 px-4 rounded-lg shadow hover:bg-green-700 transition">
+        <button className="w-full bg-green-600 text-white font-bold py-3 px-4 rounded-lg shadow hover:bg-green-700 transition mb-6">
           Contribute Now (M-Pesa)
         </button>
+
+        {/* 3. The Invite Members UI Section */}
+        <div className="border-t pt-6">
+          <h3 className="text-sm font-bold text-gray-700 mb-2">Invite a Vendor to Chama</h3>
+          <div className="flex gap-2">
+            <input 
+              type="text" 
+              placeholder="Phone e.g. +254..." 
+              className="flex-1 px-3 py-2 border rounded-lg text-sm text-black"
+              value={invitePhone}
+              onChange={(e) => setInvitePhone(e.target.value)}
+            />
+            <button 
+              onClick={handleInvite}
+              className="bg-blue-100 text-blue-700 font-semibold px-4 py-2 rounded-lg text-sm hover:bg-blue-200 transition"
+            >
+              Invite
+            </button>
+          </div>
+          {inviteStatus && <p className="text-xs text-green-600 mt-2 font-medium">{inviteStatus}</p>}
+        </div>
+
       </div>
     </div>
   );

@@ -95,6 +95,7 @@ class ActivePoolView(APIView):
             remaining = float(pool.target_amount) - float(pool.current_balance)
             return Response({
                 "pool_id": pool.id,
+                "group_id": pool.group.id,
                 "group_name": pool.group.name,
                 "target_amount": pool.target_amount,
                 "collected": pool.current_balance,
