@@ -31,8 +31,10 @@ export const CreatePoolForm: React.FC<CreatePoolFormProps> = ({ groupId, onPoolC
           'Authorization': `Bearer ${localStorage.getItem('access_token')}`
         },
         body: JSON.stringify({
-          group: groupId,
+          group_id: groupId,          // Changed from 'group' to 'group_id'
           target_amount: amount,
+          contribution_per_member: 0, // Backend expects this!
+          deadline: "2026-12-31 23:59:59",
           status: 'OPEN'
         })
       });
