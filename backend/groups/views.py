@@ -37,6 +37,7 @@ class GroupCreateView(APIView):
             "name": group.name
         }, status=status.HTTP_201_CREATED)
 
+
 class GroupInviteView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -47,30 +48,32 @@ class GroupInviteView(APIView):
             return Response({"error": "Group not found or you are not the admin"}, status=status.HTTP_403_FORBIDDEN)
             
         phone_numbers = request.data.get("phone_numbers", [])
-        normalized_numbers = [normalize_phone(p) for p in phone_numbers]
         
         if not phone_numbers:
             return Response({"error": "Provide at least one phone number"}, status=status.HTTP_400_BAD_REQUEST)
 
-        for phone in phone_numbers:
+        # Normalize all incoming target numbers cleanly
+        normalized_numbers = [normalize_phone(p) for p in phone_numbers]
+
+        for phone in normalized_numbers:
             # 1. Get the user if they exist, or create a placeholder using phone as username
             invited_user, created = User.objects.get_or_create(
                 phone_number=phone,
                 defaults={'username': phone, 'is_vendor': True}
             )
             
-            # 2. Add them to the group (get_or_create prevents duplicates if they are already in)
+            # 2. Add them to the group
             GroupMembership.objects.get_or_create(
                 group=group,
                 vendor=invited_user
             )
 
-        # FR-V-011: Send SMS Invites
+        # FR-V-011: Send SMS Invites using the safe numbers list
         message = f"You've been invited to join the Chama '{group.name}' by {request.user.username}. Log in to Chama Cloud to join!"
         
         try:
-            sms.send(message, phone_numbers)
-            return Response({"message": f"Invites sent to {len(phone_numbers)} members."}, status=status.HTTP_200_OK)
+            sms.send(message, normalized_numbers)
+            return Response({"message": f"Invites sent to {len(normalized_numbers)} members."}, status=status.HTTP_200_OK)
         except Exception as e:
             print(f"⚠️ SMS Bypassed: {str(e)}")
             return Response({"message": "Invites logged locally (AT SMS bypassed for dev)."}, status=status.HTTP_200_OK)
