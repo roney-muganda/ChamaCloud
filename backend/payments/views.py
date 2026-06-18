@@ -1,4 +1,3 @@
-
 import os
 import requests
 import json
@@ -122,6 +121,11 @@ class DarajaCallbackView(APIView):
             print(f"⚠️ CheckoutRequestID {checkout_request_id} not found in database.")
             return Response({"ResultCode": 1, "ResultDesc": "Rejected"}, status=status.HTTP_404_NOT_FOUND)
 
+        # NFR-REL-002: Webhook Idempotency 
+        if payment.status in ['COMPLETED', 'FAILED']:
+            print("⚠️ Webhook already processed for this transaction. Ignoring.")
+            return Response({"ResultCode": 0, "ResultDesc": "Already processed"}, status=status.HTTP_200_OK)
+
         # ResultCode 0 means transaction went through completely
         if result_code == 0:
             callback_metadata = stk_callback.get("CallbackMetadata", {}).get("Item", [])
@@ -131,20 +135,42 @@ class DarajaCallbackView(APIView):
             amount_paid = metadata.get("Amount")
             mpesa_receipt = metadata.get("MpesaReceiptNumber")
             
-            # Update record status to successful completion
+            # 1. Update Payment Record
             payment.status = 'COMPLETED'
-            # Assigning receipt if the model supports it; wrapped in try block for safe execution
             if hasattr(payment, 'mpesa_receipt_number'):
                 payment.mpesa_receipt_number = mpesa_receipt
             elif hasattr(payment, 'receipt_number'):
                 payment.receipt_number = mpesa_receipt
-
             payment.save()
-            print(f"✅ Success! Local payment record updated. Receipt: {mpesa_receipt}, Amount: {amount_paid}")
+
+            # 2. Update Pool Balance Logic
+            pool = payment.pool
+            pool.collected += int(float(amount_paid)) # Safely cast to float then int
+            
+            # Check if target is met
+            if pool.collected >= pool.target_amount:
+                pool.status = 'COMPLETED'
+                print(f"🎉 POOL TARGET MET! Pool {pool.id} marked as COMPLETED.")
+                
+            pool.save()
+            print(f"✅ Success! Local payment record updated. Receipt: {mpesa_receipt}, Pool Balance: KES {pool.collected}")
+
         else:
-            # Code 1032 indicates manual cancellation, others handle timeouts / balance drops
+            # 1. Mark as Failed
             payment.status = 'FAILED'
             payment.save()
             print(f"❌ Transaction Failed/Cancelled. Code: {result_code} - Reason: {result_desc}")
+            
+            # 2. Dispatch Retry SMS
+            try:
+                # Import here to avoid circular imports at file load
+                from accounts.views import sms 
+                vendor_phone = payment.vendor.phone_number
+                message = f"Chama Cloud: Your M-Pesa payment of KES {payment.amount} for '{payment.pool.group.name}' failed or was cancelled. Please retry from your dashboard."
+                
+                sms.send(message, [vendor_phone])
+                print("📩 Failure SMS dispatched.")
+            except Exception as e:
+                print(f"⚠️ SMS Dispatch Bypassed (Local dev or missing config): {str(e)}")
 
         return Response({"ResultCode": 0, "ResultDesc": "Accepted"}, status=status.HTTP_200_OK)
