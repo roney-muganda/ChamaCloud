@@ -6,6 +6,7 @@ from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from .models import VendorGroup, GroupMembership
 from django.contrib.auth import get_user_model
+from chamacloud.utils import normalize_phone
 
 User = get_user_model()
 
@@ -45,7 +46,8 @@ class GroupInviteView(APIView):
         except VendorGroup.DoesNotExist:
             return Response({"error": "Group not found or you are not the admin"}, status=status.HTTP_403_FORBIDDEN)
             
-        phone_numbers = request.data.get("phone_numbers", []) # Expects a list like ["+254711111111", "+254722222222"]
+        phone_numbers = request.data.get("phone_numbers", [])
+        normalized_numbers = [normalize_phone(p) for p in phone_numbers]
         
         if not phone_numbers:
             return Response({"error": "Provide at least one phone number"}, status=status.HTTP_400_BAD_REQUEST)

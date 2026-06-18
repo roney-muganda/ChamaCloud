@@ -19,6 +19,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [invitePhone, setInvitePhone] = useState('');
   const [inviteStatus, setInviteStatus] = useState('');
+  const [paymentStatus, setPaymentStatus] = useState(''); // NEW: Tracks STK push status
 
   useEffect(() => {
     // This hook only handles loading the initial data
@@ -76,6 +77,32 @@ export default function Dashboard() {
     }
   };
 
+  // 3. NEW: M-Pesa STK Push Trigger
+  const handleContribute = async () => {
+    const token = localStorage.getItem('access_token');
+    if (!poolData?.pool_id) return;
+
+    setPaymentStatus('Initiating M-Pesa STK Push...');
+    try {
+      const res = await fetch(`https://chamacloud-api.onrender.com/api/payments/pool/${poolData.pool_id}/contribute/`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      const data = await res.json();
+      
+      if (res.ok) {
+        setPaymentStatus('STK Push sent! Please check your phone to enter your PIN.');
+      } else {
+        setPaymentStatus(data.error || 'Failed to initiate payment.');
+      }
+    } catch (err) {
+      setPaymentStatus('Network error. Could not reach server.');
+    }
+  };
+
   if (loading) return <div className="p-6 text-center font-semibold text-gray-600">Loading Chama Data...</div>;
   
   if (poolData?.error) {
@@ -119,9 +146,19 @@ export default function Dashboard() {
           ></div>
         </div>
 
-        <button className="w-full bg-green-600 text-white font-bold py-3 px-4 rounded-lg shadow hover:bg-green-700 transition mb-6">
+        {/* M-Pesa Trigger Button */}
+        <button 
+          onClick={handleContribute}
+          className="w-full bg-green-600 text-white font-bold py-3 px-4 rounded-lg shadow hover:bg-green-700 transition mb-2"
+        >
           Contribute Now (M-Pesa)
         </button>
+        {/* Payment Status Message */}
+        {paymentStatus && (
+          <p className={`text-center text-sm font-medium mb-6 ${paymentStatus.includes('error') || paymentStatus.includes('Failed') ? 'text-red-600' : 'text-green-700'}`}>
+            {paymentStatus}
+          </p>
+        )}
 
         {/* 3. The Invite Members UI Section */}
         <div className="border-t pt-6">

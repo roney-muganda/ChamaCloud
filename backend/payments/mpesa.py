@@ -21,6 +21,9 @@ def generate_stk_password():
     """Generates the base64 encoded password required for STK Pushes"""
     shortcode = os.environ.get('DARAJA_BUSINESS_SHORTCODE')
     passkey = os.environ.get('DARAJA_PASSKEY')
+
+    if not shortcode or not passkey:
+        raise ValueError("CRITICAL: Daraja environment variables (shortcode or passkey) are missing!")
     
     # Daraja requires a timestamp in the exact format YYYYMMDDHHmmss
     timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
