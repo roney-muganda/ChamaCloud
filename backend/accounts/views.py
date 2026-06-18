@@ -1,7 +1,7 @@
 import os 
 import random
 import africastalking
-
+from chamacloud.utils import normalize_phone
 
 os.environ['NO_PROXY'] = '*'
 
@@ -60,6 +60,10 @@ class RequestOTPView(APIView):
                 "debug_otp": otp 
             }, status=status.HTTP_200_OK)
 
+    def post(self, request):
+        raw_phone = request.data.get("phone_number")
+        phone_number = normalize_phone(raw_phone)
+
 
 class VerifyOTPView(APIView):
     """
@@ -95,6 +99,10 @@ class VerifyOTPView(APIView):
             }, status=status.HTTP_200_OK)
             
         return Response({"error": "Invalid or expired OTP"}, status=status.HTTP_400_BAD_REQUEST)
+
+    def post(self, request):
+        raw_phone = request.data.get("phone_number")
+        phone_number = normalize_phone(raw_phone)
 
 @require_http_methods(["GET", "HEAD"])
 def health_check(request):
