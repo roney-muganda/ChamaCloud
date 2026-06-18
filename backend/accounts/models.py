@@ -6,6 +6,10 @@ class User(AbstractUser):
     phone_number = models.CharField(max_length=15, unique=True)
     is_vendor = models.BooleanField(default=True)
     is_wholesaler = models.BooleanField(default=False)
+    is_feature_phone = models.BooleanField(
+        default=False, 
+        help_text="If True, the system will automatically send SMS fallback vouchers to this user."
+    )
     
     USERNAME_FIELD = 'phone_number'
     REQUIRED_FIELDS = ['username']
