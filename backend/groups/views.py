@@ -23,7 +23,7 @@ class GroupCreateView(APIView):
     def get(self, request):
         """Returns all groups the current user is a member of"""
         groups = VendorGroup.objects.filter(members__vendor=request.user).distinct()
-        data = [{"id": group.id, "name": group.name} for group in groups]
+        data = [{"id": group.id, "name": group.name, "member_count": group.members.count()} for group in groups]
         return Response(data, status=status.HTTP_200_OK)
 
     def post(self, request):
