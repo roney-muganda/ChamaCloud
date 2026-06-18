@@ -20,6 +20,12 @@ sms = africastalking.SMS
 class GroupCreateView(APIView):
     permission_classes = [IsAuthenticated]
 
+    def get(self, request):
+        """Returns all groups the current user is a member of"""
+        groups = VendorGroup.objects.filter(members__vendor=request.user).distinct()
+        data = [{"id": group.id, "name": group.name} for group in groups]
+        return Response(data, status=status.HTTP_200_OK)
+
     def post(self, request):
         name = request.data.get("name")
         if not name:
@@ -40,22 +46,6 @@ class GroupCreateView(APIView):
 
 class GroupInviteView(APIView):
     permission_classes = [IsAuthenticated]
-
-    def get(self, request):
-        """Returns all groups the current user is a member of"""
-        # We filter the groups to only return ones where the logged-in user is a member
-        groups = VendorGroup.objects.filter(members__vendor=request.user).distinct()
-        
-        # Manually serialize the data
-        data = [
-            {
-                "id": group.id,
-                "name": group.name,
-            }
-            for group in groups
-        ]
-        
-        return Response(data, status=status.HTTP_200_OK)
 
     def post(self, request, group_id):
         try:
