@@ -14,6 +14,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import get_user_model
 from django.http import HttpResponse, JsonResponse
 from django.views.decorators.http import require_http_methods
+from rest_framework.permissions import IsAuthenticated
 
 User = get_user_model()
 
@@ -98,6 +99,37 @@ class VerifyOTPView(APIView):
             }, status=status.HTTP_200_OK)
             
         return Response({"error": "Invalid or expired OTP"}, status=status.HTTP_400_BAD_REQUEST)
+
+class WholesalerRegistrationView(APIView):
+    """
+    URL: /api/accounts/wholesaler/register/
+    Allows an authenticated user to apply for a wholesaler account.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        user = request.user
+        
+        # If they are already an approved wholesaler, prevent re-registration
+        if user.is_approved_wholesaler:
+            return Response({"message": "You are already an approved wholesaler."}, status=status.HTTP_400_BAD_REQUEST)
+
+        business_name = request.data.get("business_name")
+        business_location = request.data.get("business_location")
+
+        if not business_name or not business_location:
+            return Response({"error": "Business name and location are required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Update user profile
+        user.is_wholesaler = True
+        user.business_name = business_name
+        user.business_location = business_location
+        user.save()
+
+        return Response({
+            "message": "Wholesaler application submitted successfully. Please wait for admin approval.",
+            "status": "PENDING_APPROVAL"
+        }, status=status.HTTP_200_OK)
 
 
 @require_http_methods(["GET", "HEAD"])

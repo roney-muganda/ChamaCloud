@@ -212,6 +212,9 @@ class ValidateVoucherView(APIView):
 
     def get(self, request, key):
         from .models import QRVoucher
+
+        if not hasattr(request.user, 'is_approved_wholesaler') or not request.user.is_approved_wholesaler:
+            return Response({"error": "Unauthorized. Your wholesaler account is pending admin approval."}, status=status.HTTP_403_FORBIDDEN)
         
         try:
             if len(key) == 36:
@@ -247,6 +250,9 @@ class ValidateVoucherView(APIView):
         Marks the voucher as REDEEMED after the wholesaler hands over the goods.
         """
         from .models import QRVoucher
+        
+        if not hasattr(request.user, 'is_approved_wholesaler') or not request.user.is_approved_wholesaler:
+            return Response({"error": "Unauthorized. Your wholesaler account is pending admin approval."}, status=status.HTTP_403_FORBIDDEN)
         
         # 1. Safely locate the voucher
         try:

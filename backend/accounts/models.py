@@ -10,6 +10,16 @@ class User(AbstractUser):
         default=False, 
         help_text="If True, the system will automatically send SMS fallback vouchers to this user."
     )
+    is_wholesaler = models.BooleanField(
+        default=False, 
+        help_text="Designates whether this user operates as a wholesaler."
+    )
+    is_approved_wholesaler = models.BooleanField(
+        default=False, 
+        help_text="Designates whether the admin has verified and approved this wholesaler to redeem vouchers."
+    )
+    business_name = models.CharField(max_length=255, blank=True, null=True)
+    business_location = models.CharField(max_length=255, blank=True, null=True)
     
     USERNAME_FIELD = 'phone_number'
     REQUIRED_FIELDS = ['username']
