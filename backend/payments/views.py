@@ -1,14 +1,19 @@
+
 import os
 import requests
 import json
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, AllowAny
 from django.conf import settings
+from django.contrib.auth import get_user_model
+from chamacloud.utils import normalize_phone
 from .models import MpesaPayment
 from pools.models import Pool
 from .mpesa import get_mpesa_access_token, generate_stk_password
+
+User = get_user_model()
 
 class InitiateContributionView(APIView):
     permission_classes = [IsAuthenticated]
@@ -28,7 +33,7 @@ class InitiateContributionView(APIView):
         amount = int(pool.target_amount / member_count)
         
         # Format the phone number. Safaricom requires 2547XXXXXXXX (No '+')
-        phone_number = request.user.phone_number.replace('+', '')
+        phone_number = request.user.phone_number.replace('!', '').replace('+', '')
         
         # 2. Idempotency Check: Prevent duplicate processing if they are already PENDING
         existing_pending = MpesaPayment.objects.filter(
@@ -45,8 +50,7 @@ class InitiateContributionView(APIView):
         password, timestamp = generate_stk_password()
         shortcode = os.environ.get('DARAJA_BUSINESS_SHORTCODE')
         
-        # Your callback URL MUST be publicly accessible so Safaricom can hit it.
-        # We will use your live Render URL.
+        # Your live Render URL endpoint matching the URL configuration
         callback_url = "https://chamacloud-api.onrender.com/api/payments/webhook/"
 
         headers = {
@@ -59,7 +63,7 @@ class InitiateContributionView(APIView):
             "Password": password,
             "Timestamp": timestamp,
             "TransactionType": "CustomerPayBillOnline",
-            "Amount": 1,
+            "Amount": amount,  # PRODUCTION CHANGE: Real calculated dynamic pool amount
             "PartyA": phone_number,
             "PartyB": shortcode,
             "PhoneNumber": phone_number,
@@ -68,8 +72,9 @@ class InitiateContributionView(APIView):
             "TransactionDesc": f"Contribution to {pool.group.name}"
         }
 
-        # 4. Fire the STK Push
-        api_url = "https://sandbox.safaricom.co.ke/mpesa/stkpush/v1/processrequest"
+        # PRODUCTION CHANGE: Use standard fallback if environment variable is not explicitly declared
+        api_base_url = os.environ.get("DARAJA_API_BASE_URL", "https://sandbox.safaricom.co.ke")
+        api_url = f"{api_base_url.rstrip('/')}/mpesa/stkpush/v1/processrequest"
         
         try:
             response = requests.post(api_url, json=payload, headers=headers)
@@ -92,3 +97,54 @@ class InitiateContributionView(APIView):
         except Exception as e:
             print(f"Network Error reaching Daraja: {str(e)}")
             return Response({"error": "Payment gateway is currently unreachable."}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+
+
+class DarajaCallbackView(APIView):
+    """
+    Safaricom hits this endpoint asynchronously after the user enters or cancels their M-Pesa PIN.
+    """
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        callback_data = request.data
+        print("====== DARAJA CALLBACK RECEIVED ======")
+        print(json.dumps(callback_data, indent=2))
+        
+        stk_callback = callback_data.get("Body", {}).get("stkCallback", {})
+        result_code = stk_callback.get("ResultCode")
+        checkout_request_id = stk_callback.get("CheckoutRequestID")
+        result_desc = stk_callback.get("ResultDesc")
+
+        # Find the respective local pending record
+        try:
+            payment = MpesaPayment.objects.get(checkout_request_id=checkout_request_id)
+        except MpesaPayment.DoesNotExist:
+            print(f"⚠️ CheckoutRequestID {checkout_request_id} not found in database.")
+            return Response({"ResultCode": 1, "ResultDesc": "Rejected"}, status=status.HTTP_404_NOT_FOUND)
+
+        # ResultCode 0 means transaction went through completely
+        if result_code == 0:
+            callback_metadata = stk_callback.get("CallbackMetadata", {}).get("Item", [])
+            metadata = {item["Name"]: item.get("Value") for item in callback_metadata}
+            
+            # Extract transactional metadata parameters
+            amount_paid = metadata.get("Amount")
+            mpesa_receipt = metadata.get("MpesaReceiptNumber")
+            
+            # Update record status to successful completion
+            payment.status = 'COMPLETED'
+            # Assigning receipt if the model supports it; wrapped in try block for safe execution
+            if hasattr(payment, 'mpesa_receipt_number'):
+                payment.mpesa_receipt_number = mpesa_receipt
+            elif hasattr(payment, 'receipt_number'):
+                payment.receipt_number = mpesa_receipt
+
+            payment.save()
+            print(f"✅ Success! Local payment record updated. Receipt: {mpesa_receipt}, Amount: {amount_paid}")
+        else:
+            # Code 1032 indicates manual cancellation, others handle timeouts / balance drops
+            payment.status = 'FAILED'
+            payment.save()
+            print(f"❌ Transaction Failed/Cancelled. Code: {result_code} - Reason: {result_desc}")
+
+        return Response({"ResultCode": 0, "ResultDesc": "Accepted"}, status=status.HTTP_200_OK)
