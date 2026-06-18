@@ -81,6 +81,11 @@ CORS_ALLOWED_ORIGINS = [
     "https://your-vercel-domain.vercel.app",
 ]
 
+AUTHENTICATION_BACKENDS = [
+    'chamacloud.backends.NormalizedPhoneAuthBackend',
+    'django.contrib.auth.backends.ModelBackend', # Keep default as fallback
+]
+
 ROOT_URLCONF = 'chamacloud.urls'
 
 TEMPLATES = [
