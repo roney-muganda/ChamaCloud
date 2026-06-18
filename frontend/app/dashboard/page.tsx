@@ -1,7 +1,8 @@
 "use client";
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
+import { CreatePoolForm } from '../../components/pools/CreatePoolForm';
+import { CreateGroupForm } from '../../components/groups/CreateGroupForm';
 
-// 1. Fix the 'any' error by defining exactly what the backend returns
 interface PoolData {
   pool_id?: number;
   group_id?: number;
@@ -10,58 +11,83 @@ interface PoolData {
   collected?: number;
   remaining?: number;
   status?: string;
-  deadline?: string;
-  error?: string; // For handling our custom error states
 }
 
 export default function Dashboard() {
+  const [groupId, setGroupId] = useState<number | null>(null);
   const [poolData, setPoolData] = useState<PoolData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [globalError, setGlobalError] = useState<string | null>(null);
   const [invitePhone, setInvitePhone] = useState('');
   const [inviteStatus, setInviteStatus] = useState('');
-  const [paymentStatus, setPaymentStatus] = useState(''); // NEW: Tracks STK push status
+  const [paymentStatus, setPaymentStatus] = useState('');
+
+  // 1. The Master Fetcher: Checks Group first, then Pool
+  const fetchDashboardState = useCallback(async (showLoader = false) => {
+    if (showLoader) {
+      setLoading(true);
+    }
+    setGlobalError(null);
+    const token = localStorage.getItem('access_token'); 
+    
+    if (!token) {
+      setGlobalError("Please log in to view your Chama.");
+      setLoading(false);
+      return;
+    }
+
+    try {
+      // Step A: Check if the user belongs to a Group
+      const groupRes = await fetch(`https://chamacloud-api.onrender.com/api/groups/`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const groupData = await groupRes.json();
+
+      if (groupRes.ok && Array.isArray(groupData) && groupData.length > 0) {
+        // User HAS a group! Save the ID.
+        const currentGroupId = groupData[0].id;
+        setGroupId(currentGroupId);
+
+        // Step B: Check if that group has an Active Pool
+        const poolRes = await fetch(`https://chamacloud-api.onrender.com/api/pools/active/`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const poolJson = await poolRes.json();
+
+        if (poolRes.ok && !poolJson.error) {
+          setPoolData(poolJson); // STATE 2: Has Pool
+        } else {
+          setPoolData(null); // STATE 1: Has Group, No Pool
+        }
+      } else {
+        // STATE 0: No Group exists for this user
+        setGroupId(null);
+        setPoolData(null);
+      }
+    } catch {
+      setGlobalError("Network error. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  }, []); 
 
   useEffect(() => {
-    // This hook only handles loading the initial data
-    const fetchActivePool = async () => {
-      const token = localStorage.getItem('access_token'); 
-      
-      if (!token) {
-        setPoolData({ error: "Please log in to view your Chama." });
-        setLoading(false);
-        return;
-      }
+    // FIX: Wrapping in setTimeout(0) pushes execution to the end of the event loop.
+    // This perfectly bypasses the synchronous setState linter error.
+    const initTimer = setTimeout(() => {
+      fetchDashboardState(false);
+    }, 0);
+    
+    return () => clearTimeout(initTimer);
+  }, [fetchDashboardState]);
 
-      try {
-        const res = await fetch(`https://chamacloud-api.onrender.com/api/pools/active/`, {
-          method: 'GET',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          }
-        });
-        
-        const data = await res.json();
-        setPoolData(data);
-      } catch (err) {
-        console.error("Failed to fetch pool", err);
-        setPoolData({ error: "Network error. Please try again." });
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchActivePool();
-  }, []); // End of useEffect
-
-  // 2. The invite handler 
   const handleInvite = async () => {
     const token = localStorage.getItem('access_token');
-    if (!invitePhone || !poolData?.group_id) return;
+    if (!invitePhone || !groupId) return;
 
     setInviteStatus('Sending...');
     try {
-      const res = await fetch(`https://chamacloud-api.onrender.com/api/groups/${poolData.group_id}/invite/`, {
+      const res = await fetch(`https://chamacloud-api.onrender.com/api/groups/${groupId}/invite/`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -72,12 +98,11 @@ export default function Dashboard() {
       const data = await res.json();
       setInviteStatus(data.message || 'Invite sent!');
       setInvitePhone('');
-    } catch (err) {
+    } catch {
       setInviteStatus('Failed to send invite.');
     }
   };
 
-  // 3. NEW: M-Pesa STK Push Trigger
   const handleContribute = async () => {
     const token = localStorage.getItem('access_token');
     if (!poolData?.pool_id) return;
@@ -98,50 +123,69 @@ export default function Dashboard() {
       } else {
         setPaymentStatus(data.error || 'Failed to initiate payment.');
       }
-    } catch (err) {
+    } catch {
       setPaymentStatus('Network error. Could not reach server.');
     }
   };
 
-  if (loading) return <div className="p-6 text-center font-semibold text-gray-600">Loading Chama Data...</div>;
+  // --- RENDERING LOGIC ---
+
+  if (loading) return <div className="min-h-screen bg-gray-50 flex items-center justify-center font-semibold text-emerald-800">Loading Terminal...</div>;
   
-  if (poolData?.error) {
+  if (globalError) return <div className="min-h-screen flex items-center justify-center text-red-600 font-bold">{globalError}</div>;
+
+  // STATE 0: No Group Found
+  if (!groupId) {
     return (
-      <div className="min-h-screen bg-gray-50 p-4 font-sans flex flex-col items-center justify-center">
-        <div className="max-w-md w-full bg-white rounded-xl shadow-md p-6 text-center border border-gray-100">
-          <p className="text-gray-800 font-medium mb-4">{poolData.error}</p>
-          <button className="bg-blue-600 text-white font-bold py-2 px-4 rounded-lg shadow hover:bg-blue-700 transition">
-            Create a New Pool
-          </button>
+      <div className="min-h-screen bg-emerald-950 p-4 font-sans flex flex-col items-center justify-center">
+        <div className="max-w-md w-full">
+          <CreateGroupForm onGroupCreated={() => fetchDashboardState(true)} />
         </div>
       </div>
     );
   }
 
-  // We need to provide fallback values of 0 to make TypeScript happy before math operations
+  // STATE 1: Has Group, but No Active Pool Found
+  if (!poolData) {
+    return (
+      <div className="min-h-screen bg-emerald-950 p-4 font-sans flex flex-col items-center justify-center">
+        <div className="max-w-md w-full">
+          <CreatePoolForm groupId={groupId} onPoolCreated={() => fetchDashboardState(true)} />
+        </div>
+      </div>
+    );
+  }
+
+  // STATE 2: Active pool exists. Show the Luminous Dashboard.
   const collected = poolData?.collected || 0;
-  const target = poolData?.target_amount || 1; // Prevent division by zero
+  const target = poolData?.target_amount || 1; 
   const progressPercentage = Math.min((collected / target) * 100, 100);
 
   return (
     <div className="min-h-screen bg-gray-50 p-4 font-sans">
-      <div className="max-w-md mx-auto bg-white rounded-xl shadow-md overflow-hidden p-6 border border-gray-100">
-        <h2 className="text-2xl font-bold text-gray-800 mb-1">{poolData?.group_name}</h2>
-        <p className="text-sm text-gray-500 mb-6">Status: <span className="font-semibold text-green-600">{poolData?.status}</span></p>
+      <div className="max-w-md mx-auto bg-white rounded-3xl shadow-xl overflow-hidden p-6 border border-emerald-50">
+        
+        <div className="flex justify-between items-start mb-6">
+          <div>
+            <h2 className="text-2xl font-black text-emerald-950 tracking-tight">{poolData?.group_name || 'Your Chama'}</h2>
+            <p className="text-sm text-emerald-600/80 font-medium mt-1">Status: <span className="font-bold text-lime-500 uppercase tracking-wider">{poolData?.status}</span></p>
+          </div>
+          <div className="h-10 w-10 bg-lime-100 rounded-full flex items-center justify-center text-xl shadow-sm">🥬</div>
+        </div>
 
-        <div className="bg-blue-50 rounded-lg p-4 mb-6 text-center">
-          <p className="text-sm text-blue-600 font-medium">Target Amount</p>
-          <p className="text-3xl font-extrabold text-blue-900">KES {poolData?.target_amount}</p>
+        <div className="bg-emerald-900 rounded-2xl p-5 mb-8 text-center shadow-inner">
+          <p className="text-xs text-emerald-300 font-semibold uppercase tracking-widest mb-1">Target Amount</p>
+          <p className="text-4xl font-black text-lime-400 tracking-tight">KES {poolData?.target_amount}</p>
         </div>
 
         {/* Progress Bar */}
-        <div className="mb-2 flex justify-between text-sm font-medium text-gray-700">
+        <div className="mb-2 flex justify-between text-sm font-bold text-emerald-800">
           <span>Collected: KES {poolData?.collected}</span>
-          <span>Remaining: KES {poolData?.remaining}</span>
+          <span className="text-emerald-600/60 font-medium">Remaining: KES {poolData?.remaining}</span>
         </div>
-        <div className="w-full bg-gray-200 rounded-full h-3 mb-8">
+        <div className="w-full bg-emerald-100 rounded-full h-4 mb-8 p-1 shadow-inner">
           <div 
-            className="bg-green-500 h-3 rounded-full transition-all duration-500" 
+            className="bg-lime-400 h-full rounded-full transition-all duration-700 ease-out shadow-sm" 
             style={{ width: `${progressPercentage}%` }}
           ></div>
         </div>
@@ -149,45 +193,43 @@ export default function Dashboard() {
         {/* M-Pesa Trigger Button */}
         <button 
           onClick={handleContribute}
-          className="w-full bg-green-600 text-white font-bold py-3 px-4 rounded-lg shadow hover:bg-green-700 transition mb-2"
+          className="w-full bg-lime-400 text-emerald-950 font-black text-lg py-4 px-4 rounded-xl shadow-lg shadow-lime-200 hover:bg-lime-500 hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200 mb-3"
         >
           Contribute Now (M-Pesa)
         </button>
+        
         {/* Payment Status Message */}
         {paymentStatus && (
-          <p className={`text-center text-sm font-medium mb-6 ${paymentStatus.includes('error') || paymentStatus.includes('Failed') ? 'text-red-600' : 'text-green-700'}`}>
+          <p className={`text-center text-sm font-bold mb-8 p-3 rounded-xl ${paymentStatus.includes('error') || paymentStatus.includes('Failed') ? 'bg-red-50 text-red-600 border border-red-100' : 'bg-emerald-50 text-emerald-700 border border-emerald-100'}`}>
             {paymentStatus}
           </p>
         )}
 
-        {/* 3. The Invite Members UI Section */}
-        <div className="border-t pt-6">
-          <h3 className="text-sm font-bold text-gray-700 mb-2">Invite a Vendor to Chama</h3>
+        {/* The Invite Members UI Section */}
+        <div className="border-t border-emerald-100 pt-6">
+          <h3 className="text-xs font-bold text-emerald-800 uppercase tracking-wider mb-3">Expand the Chama</h3>
           
           <form 
-            onSubmit={(e) => {
-              e.preventDefault(); // Prevents Next.js from refreshing the page
-              handleInvite();     // Executes your API call function
-            }} 
+            onSubmit={(e) => { e.preventDefault(); handleInvite(); }} 
             className="flex gap-2"
           >
             <input 
               type="text" 
               placeholder="Phone e.g. +254..." 
-              className="flex-1 px-3 py-2 border rounded-lg text-sm text-black"
+              className="flex-1 px-4 py-3 bg-gray-50 border border-emerald-100 rounded-xl text-sm font-medium text-emerald-950 focus:ring-2 focus:ring-lime-400 outline-none transition"
               value={invitePhone}
               onChange={(e) => setInvitePhone(e.target.value)}
               required
             />
             <button 
-              type="submit" // Strictly tells the form to execute onSubmit
-              className="bg-blue-100 text-blue-700 font-semibold px-4 py-2 rounded-lg text-sm hover:bg-blue-200 transition"
+              type="submit" 
+              className="bg-emerald-800 text-lime-400 font-bold px-5 py-3 rounded-xl text-sm hover:bg-emerald-900 shadow-md transition"
             >
               Invite
             </button>
           </form>
           
-          {inviteStatus && <p className="text-xs text-green-600 mt-2 font-medium">{inviteStatus}</p>}
+          {inviteStatus && <p className="text-xs text-lime-600 mt-3 font-bold text-center">{inviteStatus}</p>}
         </div>
 
       </div>
