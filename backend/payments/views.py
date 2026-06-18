@@ -155,6 +155,33 @@ class DarajaCallbackView(APIView):
             pool.save()
             print(f"✅ Success! Local payment record updated. Receipt: {mpesa_receipt}, Pool Balance: KES {pool.collected}")
 
+            if pool.status == 'COMPLETED':
+                from .models import QRVoucher
+                
+                # Fetch all successful payments for this specific pool
+                successful_payments = MpesaPayment.objects.filter(pool=pool, status='COMPLETED')
+                
+                for pmt in successful_payments:
+                    # Guard check to prevent double-generation if webhook retriggers
+                    voucher_exists = QRVoucher.objects.filter(pool=pool, vendor=pmt.vendor).exists()
+                    
+                    if not voucher_exists:
+                        voucher = QRVoucher.objects.create(
+                            pool=pool,
+                            vendor=pmt.vendor,
+                            amount=pmt.amount
+                        )
+                        print(f"🎟️ Minted Voucher {voucher.fallback_code} for vendor {pmt.vendor.phone_number}")
+
+                        if hasattr(pmt.vendor, 'is_feature_phone') and pmt.vendor.is_feature_phone:
+                            try:
+                                from accounts.views import sms
+                                msg = f"Chama Cloud: Your voucher is ready! Show code {voucher.fallback_code} to the wholesaler to claim KES {voucher.amount} of stock."
+                                sms.send(msg, [pmt.vendor.phone_number])
+                                print(f"📩 Automated Fallback SMS Voucher sent to {pmt.vendor.phone_number}")
+                            except Exception as sms_err:
+                                print(f"⚠️ Fallback SMS Error: {str(sms_err)}")
+
         else:
             # 1. Mark as Failed
             payment.status = 'FAILED'
@@ -174,3 +201,78 @@ class DarajaCallbackView(APIView):
                 print(f"⚠️ SMS Dispatch Bypassed (Local dev or missing config): {str(e)}")
 
         return Response({"ResultCode": 0, "ResultDesc": "Accepted"}, status=status.HTTP_200_OK)
+
+
+class ValidateVoucherView(APIView):
+    """
+    URL: /api/payments/vouchers/<uuid_or_fallback_code>/
+    Accessible by Wholesalers to verify (GET) and claim (POST) a voucher.
+    """
+    permission_classes = [IsAuthenticated] # Restrict to logged-in wholesalers
+
+    def get(self, request, key):
+        from .models import QRVoucher
+        
+        try:
+            if len(key) == 36:
+                voucher = QRVoucher.objects.get(id=key)
+            else:
+                voucher = QRVoucher.objects.get(fallback_code=key.upper())
+        except QRVoucher.DoesNotExist:
+            return Response({"error": "Invalid voucher code or token."}, status=status.HTTP_404_NOT_FOUND)
+
+        if not voucher.is_valid():
+            return Response({
+                "status": "INVALID",
+                "reason": "Voucher has expired or has already been redeemed.",
+                "details": {
+                    "code": voucher.fallback_code,
+                    "status": voucher.status,
+                    "expired": timezone.now() >= voucher.expires_at
+                }
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response({
+            "status": "VALID",
+            "voucher_id": str(voucher.id),
+            "code": voucher.fallback_code,
+            "vendor_phone": voucher.vendor.phone_number,
+            "amount_value": voucher.amount,
+            "pool_group": voucher.pool.group.name,
+            "expires_at": voucher.expires_at
+        }, status=status.HTTP_200_OK)
+
+    def post(self, request, key):
+        """
+        Marks the voucher as REDEEMED after the wholesaler hands over the goods.
+        """
+        from .models import QRVoucher
+        
+        # 1. Safely locate the voucher
+        try:
+            if len(key) == 36:
+                voucher = QRVoucher.objects.get(id=key)
+            else:
+                voucher = QRVoucher.objects.get(fallback_code=key.upper())
+        except QRVoucher.DoesNotExist:
+            return Response({"error": "Invalid voucher code or token."}, status=status.HTTP_404_NOT_FOUND)
+
+        # 2. Final security check to prevent double-spending
+        if not voucher.is_valid():
+            return Response({
+                "error": "This voucher cannot be redeemed. It is either expired or already claimed."
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # 3. Consume the voucher
+        voucher.status = 'REDEEMED'
+        # Optional: You could log `redeemed_by=request.user` here if you add that field to the model later!
+        voucher.save()
+
+        print(f"🛍️ VOUCHER REDEEMED: KES {voucher.amount} for {voucher.vendor.phone_number}")
+
+        return Response({
+            "status": "SUCCESS",
+            "message": f"KES {voucher.amount} voucher successfully redeemed!",
+            "vendor_phone": voucher.vendor.phone_number,
+            "pool_group": voucher.pool.group.name
+        }, status=status.HTTP_200_OK)
