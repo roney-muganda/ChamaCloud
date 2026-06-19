@@ -81,7 +81,13 @@ export default function AuthPage() {
         
         {/* Header */}
         <div className="text-center mb-8">
-          <div className="h-16 w-16 bg-lime-100 rounded-2xl flex items-center justify-center text-3xl mx-auto mb-4 shadow-inner">🥬</div>
+          <div className="h-14 w-14 flex-shrink-0 bg-gradient-to-br from-emerald-100 to-lime-100 rounded-2xl flex items-center justify-center shadow-inner border border-emerald-200">
+            <svg viewBox="0 0 24 24" fill="none" className="w-8 h-8 text-emerald-700" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="8" r="5" />
+              <circle cx="8" cy="15" r="5" />
+              <circle cx="16" cy="15" r="5" />
+            </svg>
+          </div>
           <h1 className="text-3xl font-black text-emerald-950 tracking-tighter">Chama Cloud</h1>
           <p className="text-emerald-600 font-medium mt-2">Vendors, log in to access your pools.</p>
         </div>
