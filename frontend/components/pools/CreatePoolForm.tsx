@@ -1,111 +1,124 @@
-import { useState } from 'react';
+"use client";
+import { useState, useEffect } from 'react';
 
-interface CreatePoolFormProps {
-  groupId: number;
-  onPoolCreated: () => void; // Function to refresh the dashboard after creation
+interface Wholesaler {
+  id: number;
+  name: string;
 }
 
-export const CreatePoolForm: React.FC<CreatePoolFormProps> = ({ groupId, onPoolCreated }) => {
-  const [targetAmount, setTargetAmount] = useState<string>('');
+export function CreatePoolForm({ groupId, onPoolCreated }: { groupId: number, onPoolCreated: () => void }) {
+  const [targetAmount, setTargetAmount] = useState('');
+  const [selectedWholesaler, setSelectedWholesaler] = useState('');
+  const [wholesalers, setWholesalers] = useState<Wholesaler[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Fetch Wholesalers on load
+  useEffect(() => {
+    const fetchWholesalers = async () => {
+      const token = localStorage.getItem('access_token');
+      try {
+        const res = await fetch('https://chamacloud-api.onrender.com/api/pools/wholesalers/', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setWholesalers(data);
+        }
+      } catch (err) {
+        console.error("Failed to load wholesalers", err);
+      }
+    };
+    fetchWholesalers();
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
 
-    const amount = parseInt(targetAmount);
-    if (isNaN(amount) || amount <= 0) {
-      setError("Please enter a valid target amount.");
-      setLoading(false);
-      return;
-    }
-
-    // Automatically calculate contribution so the backend math passes
-    // We assume 3 members as the minimum threshold
-    const autoContribution = Math.ceil(amount / 3);
-
+    const token = localStorage.getItem('access_token');
     try {
-      const res = await fetch('https://chamacloud-api.onrender.com/api/pools/', {
+      const res = await fetch('https://chamacloud-api.onrender.com/api/pools/create/', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('access_token')}`
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
         },
-        body: JSON.stringify({
-          group_id: groupId,
-          target_amount: amount,
-          contribution_per_member: autoContribution, // Calculated value
-          deadline: "2026-12-31 23:59:59",
-          status: 'OPEN'
+        body: JSON.stringify({ 
+          group_id: groupId, 
+          target_amount: targetAmount,
+          wholesaler_id: selectedWholesaler 
         })
       });
 
-      const data = await res.json();
-
       if (res.ok) {
-        setTargetAmount('');
-        onPoolCreated(); 
+        onPoolCreated();
       } else {
-        // This will now show the specific error from the backend if it still fails
-        setError(data.error || 'Failed to create the pool.');
+        const data = await res.json();
+        setError(data.error || 'Failed to create pool');
       }
-    } catch (err) {
-      setError('Network error. Please try again.');
+    } catch {
+      setError('Network error');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="bg-white p-6 rounded-2xl shadow-lg border border-emerald-50">
-      <div className="flex items-center gap-3 mb-4">
-        <div className="p-2 bg-lime-100 rounded-lg">
-          <span className="text-xl">🥬</span>
-        </div>
-        <h3 className="text-lg font-bold text-emerald-950">Start Fresh Produce Pool</h3>
-      </div>
+    <div className="bg-white p-8 rounded-3xl shadow-xl max-w-md w-full border border-emerald-100 relative overflow-hidden">
+      <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-lime-400 to-emerald-500"></div>
       
-      <p className="text-sm text-emerald-700 mb-6">
-        Set a target amount to pool funds together. Once the target is hit, everyone gets their vouchers instantly.
-      </p>
-
-      {error && (
-        <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-xl text-sm">
-          {error}
+      <div className="flex items-center mb-6">
+        <div className="h-10 w-10 flex-shrink-0 bg-emerald-100 rounded-xl flex items-center justify-center text-emerald-700 mr-4 border border-emerald-200">
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+          </svg>
         </div>
-      )}
+        <h2 className="text-2xl font-black text-emerald-950 tracking-tight">Start Funding Pool</h2>
+      </div>
+
+      <p className="text-emerald-700 text-sm font-medium mb-6">Select a supplier and set a target amount to pool funds together.</p>
+
+      {error && <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm font-bold mb-4 border border-red-100">{error}</div>}
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
-          <label htmlFor="target_amount" className="block text-xs font-semibold text-emerald-800 uppercase tracking-wider mb-1">
-            Target Amount (KES)
-          </label>
-          <div className="relative">
-            <span className="absolute left-4 top-3 text-emerald-600 font-bold">KES</span>
-            <input
-              id="target_amount"
-              type="number"
-              required
-              min="1"
-              step="1"
-              placeholder="15000"
-              value={targetAmount}
-              onChange={(e) => setTargetAmount(e.target.value)}
-              className="w-full pl-14 pr-4 py-3 border border-emerald-200 rounded-xl font-bold text-lg text-emerald-950 focus:ring-2 focus:ring-lime-400 focus:border-lime-400 outline-none transition-all"
-            />
-          </div>
+          <label className="text-xs font-black uppercase tracking-widest text-emerald-800 mb-1 block">Select Supplier</label>
+          <select 
+            className="w-full p-4 bg-gray-50 rounded-xl border border-emerald-200 text-emerald-950 font-bold focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none appearance-none"
+            value={selectedWholesaler}
+            onChange={(e) => setSelectedWholesaler(e.target.value)}
+            required
+          >
+            <option value="" disabled>-- Choose a Wholesaler --</option>
+            {wholesalers.map(w => (
+              <option key={w.id} value={w.id}>{w.name}</option>
+            ))}
+          </select>
         </div>
 
-        <button
-          type="submit"
-          disabled={loading || !targetAmount}
-          className="w-full flex justify-center py-3.5 px-4 rounded-xl shadow-md text-sm font-bold text-emerald-950 bg-lime-400 hover:bg-lime-500 focus:outline-none transition-all duration-200 disabled:bg-gray-200 disabled:text-gray-400"
+        <div>
+          <label className="text-xs font-black uppercase tracking-widest text-emerald-800 mb-1 block">Target Amount (KES)</label>
+          <input 
+            type="number" 
+            placeholder="e.g. 15000" 
+            className="w-full p-4 bg-gray-50 rounded-xl border border-emerald-200 text-emerald-950 font-bold focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none"
+            value={targetAmount}
+            onChange={(e) => setTargetAmount(e.target.value)}
+            required
+            min="1"
+          />
+        </div>
+
+        <button 
+          type="submit" 
+          disabled={loading || !selectedWholesaler}
+          className="w-full bg-lime-400 text-emerald-950 font-black text-lg py-4 rounded-xl shadow-lg hover:bg-lime-500 transition-all duration-300 disabled:opacity-50 mt-4"
         >
-          {loading ? 'Opening Pool...' : 'Open Funding Pool'}
+          {loading ? 'Starting Pool...' : 'Open Funding Pool'}
         </button>
       </form>
     </div>
   );
-};
+}
