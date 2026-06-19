@@ -6,6 +6,8 @@ from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from .models import Pool
 from groups.models import VendorGroup
+from accounts.models import Wholesaler
+
 
 class PoolCreateView(APIView):
     permission_classes = [IsAuthenticated]
