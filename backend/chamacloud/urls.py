@@ -24,5 +24,6 @@ urlpatterns = [
     path('api/', include('groups.urls')),
     path('api/', include('pools.urls')),
     path('api/payments/', include('payments.urls')),
+    path('api/vouchers/', include('vouchers.urls')),
     path('health/', health_check, name='health_check'),
 ]
