@@ -56,9 +56,15 @@ export default function AuthPage() {
       const data = await res.json();
       
       if (res.ok && data.access) {
-        // Securely store the token and redirect to dashboard
+        // Securely store the token
         localStorage.setItem('access_token', data.access);
-        router.push('/dashboard');
+        
+        // Traffic Cop Logic: Route based on user role
+        if (data.is_approved_wholesaler) {
+          router.push('/wholesaler/dashboard');
+        } else {
+          router.push('/dashboard');
+        }
       } else {
         setError(data.error || 'Invalid OTP.');
       }

@@ -95,6 +95,7 @@ class VerifyOTPView(APIView):
             return Response({
                 "message": "Authenticated successfully",
                 "is_new_user": created,
+                "is_approved_wholesaler": user.is_approved_wholesaler,
                 "access": str(refresh.access_token),
                 "refresh": str(refresh),
             }, status=status.HTTP_200_OK)
