@@ -182,3 +182,14 @@ class WholesalerApplicationView(APIView):
             "message": "Application received successfully!",
             "application_id": application.id
         }, status=status.HTTP_201_CREATED)
+
+class CurrentUserView(APIView):
+    """Returns the currently logged-in user's details"""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        return Response({
+            "id": request.user.id,
+            "username": getattr(request.user, 'username', ''),
+            "phone_number": getattr(request.user, 'phone_number', '')
+        })
