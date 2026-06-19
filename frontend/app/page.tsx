@@ -60,7 +60,7 @@ export default function AuthPage() {
         localStorage.setItem('access_token', data.access);
         
         // Traffic Cop Logic: Route based on user role
-        if (data.is_wholesaler) {
+        if (data.is_approved_wholesaler) {
           router.push('/wholesaler/dashboard');
         } else {
           router.push('/dashboard');

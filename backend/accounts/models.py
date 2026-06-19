@@ -125,12 +125,21 @@ class WholesalerApplication(models.Model):
             elif is_revoked:
                 try:
                     user = User.objects.get(phone_number=clean_phone)
-                    user.is_approved_wholesaler = False
-                    user.save()
                     
-                    wholesaler = Wholesaler.objects.filter(user=user).first()
-                    if wholesaler:
-                        wholesaler.is_verified = False
-                        wholesaler.save()
+                    # Check if there are ANY other approved applications for this phone number
+                    still_approved = WholesalerApplication.objects.filter(
+                        phone=clean_phone, 
+                        status='APPROVED'
+                    ).exists()
+                    
+                    # Only revoke if they have NO approved applications left
+                    if not still_approved:
+                        user.is_approved_wholesaler = False
+                        user.save()
+                        
+                        wholesaler = Wholesaler.objects.filter(user=user).first()
+                        if wholesaler:
+                            wholesaler.is_verified = False
+                            wholesaler.save()
                 except User.DoesNotExist:
                     pass # User doesn't exist, nothing to revoke
