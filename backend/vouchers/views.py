@@ -119,3 +119,35 @@ class RedeemVoucherView(APIView):
             "message": "Payment complete! Goods can now be released.",
             "amount": amount
         }, status=status.HTTP_200_OK)
+
+class VendorVoucherListView(APIView):
+    """
+    GET /api/vouchers/my-vouchers/
+    Returns all vouchers (both ACTIVE and REDEEMED) for the authenticated vendor's groups.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        # Find all vouchers linked to pools where the user is a group member
+        # Assuming QRVoucher is in the payments app based on our last fix
+        from payments.models import QRVoucher 
+        
+        vouchers = QRVoucher.objects.filter(
+            pool__group__members__vendor=request.user
+        ).order_by('-created_at')
+
+        data = []
+        for v in vouchers:
+            amount = getattr(v, 'amount', getattr(v.pool, 'target_amount', 0) if hasattr(v, 'pool') else 0)
+            group_name = v.pool.group.name if getattr(v, 'pool', None) and getattr(v.pool, 'group', None) else "Chama Group"
+            
+            data.append({
+                "id": str(v.id),
+                "code": getattr(v, 'fallback_code', f"VOUCHER-{str(v.id)[:8]}"),
+                "amount": amount,
+                "status": "REDEEMED" if v.is_claimed else "ACTIVE",
+                "group_name": group_name,
+                "created_at": v.created_at.strftime("%b %d, %Y")
+            })
+
+        return Response(data, status=status.HTTP_200_OK)
