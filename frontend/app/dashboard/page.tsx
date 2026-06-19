@@ -134,7 +134,7 @@ export default function Dashboard() {
           <h2 className="text-2xl font-black text-emerald-950 mb-2">Grow the Chama!</h2>
           <p className="text-emerald-700 mb-6 font-medium">You need at least 3 members to start a pool. You currently have {group.member_count}.</p>
           <form onSubmit={(e) => { e.preventDefault(); handleInvite(); }} className="space-y-3">
-            <input type="text" placeholder="Phone e.g. +254..." className="w-full p-3 bg-gray-50 rounded-xl border border-emerald-100" value={invitePhone} onChange={(e) => setInvitePhone(e.target.value)} required />
+            <input type="text" placeholder="Phone e.g. +254..." className="w-full p-3 bg-gray-50 rounded-xl border border-emerald-100 text-emerald-950 font-bold" value={invitePhone} onChange={(e) => setInvitePhone(e.target.value)} required />
             <button className="w-full bg-emerald-800 text-lime-400 font-bold py-3 rounded-xl hover:bg-emerald-900">Invite Member</button>
           </form>
           {inviteStatus && <p className="mt-4 text-sm font-bold text-emerald-600">{inviteStatus}</p>}
@@ -152,16 +152,62 @@ export default function Dashboard() {
     );
   }
 
-  // STATE 3: Active Pool Dashboard
+  // STATE 3: Luminous Dashboard (Active Pool)
+  const collected = poolData?.collected || 0;
+  const target = poolData?.target_amount || 1; 
+  const progressPercentage = Math.min((collected / target) * 100, 100);
+
   return (
-    <div className="min-h-screen bg-gray-50 p-4 font-sans">
-      <div className="max-w-md mx-auto bg-white rounded-3xl shadow-xl p-6">
-        <h2 className="text-2xl font-black text-emerald-950">{poolData.group_name}</h2>
-        <div className="bg-emerald-900 rounded-2xl p-5 my-6 text-center">
-          <p className="text-lime-400 text-4xl font-black">KES {poolData.target_amount}</p>
+    <div className="min-h-screen bg-emerald-50 p-6 font-sans flex items-center justify-center">
+      <div className="max-w-md w-full mx-auto bg-white rounded-[2rem] shadow-2xl p-8 border border-emerald-100">
+        
+        {/* Header */}
+        <div className="flex justify-between items-center mb-8">
+          <h2 className="text-3xl font-black text-emerald-950 tracking-tighter leading-tight pr-4">
+            {poolData.group_name}
+          </h2>
+          <div className="h-14 w-14 flex-shrink-0 bg-lime-100 rounded-full flex items-center justify-center text-2xl shadow-inner">🥬</div>
         </div>
-        <button onClick={handleContribute} className="w-full bg-lime-400 font-black py-4 rounded-xl">Contribute Now</button>
-        {paymentStatus && <p className="mt-4 text-center font-bold text-sm">{paymentStatus}</p>}
+
+        {/* Big Amount Card */}
+        <div className="bg-gradient-to-br from-emerald-900 to-emerald-800 rounded-3xl p-8 mb-8 text-center shadow-xl">
+          <p className="text-emerald-300 text-xs font-bold uppercase tracking-widest mb-1">Target Amount</p>
+          <p className="text-5xl font-black text-lime-400 tracking-tighter">KES {poolData.target_amount}</p>
+        </div>
+
+        {/* Animated Progress Bar */}
+        <div className="mb-8">
+          <div className="flex justify-between text-sm font-bold text-emerald-900 mb-2">
+            <span>Progress</span>
+            <span>{progressPercentage.toFixed(0)}%</span>
+          </div>
+          <div className="w-full bg-emerald-100 rounded-full h-5 p-1 shadow-inner">
+            <div 
+              className="bg-gradient-to-r from-lime-400 to-emerald-400 h-full rounded-full transition-all duration-1000 ease-out shadow-lg" 
+              style={{ width: `${progressPercentage}%` }}
+            ></div>
+          </div>
+        </div>
+
+        {/* Action Button */}
+        <button 
+          onClick={handleContribute}
+          className="w-full bg-lime-400 text-emerald-950 font-black text-xl py-5 rounded-2xl shadow-lg shadow-lime-200 hover:scale-[1.02] active:scale-[0.98] transition-all duration-300"
+        >
+          Contribute Now
+        </button>
+        
+        {/* Status Message */}
+        {paymentStatus && (
+          <p className={`mt-6 text-center text-sm font-bold p-4 rounded-xl ${
+            paymentStatus.includes('error') || paymentStatus.includes('Failed') 
+              ? 'bg-red-50 text-red-600 border border-red-100' 
+              : 'bg-emerald-50 text-emerald-700 border border-emerald-100'
+          }`}>
+            {paymentStatus}
+          </p>
+        )}
+        
       </div>
     </div>
   );

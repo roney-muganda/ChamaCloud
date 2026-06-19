@@ -145,10 +145,10 @@ class DarajaCallbackView(APIView):
 
             # 2. Update Pool Balance Logic
             pool = payment.pool
-            pool.collected += int(float(amount_paid)) # Safely cast to float then int
+            pool.current_balance += int(float(amount_paid)) # Safely cast to float then int
             
             # Check if target is met
-            if pool.collected >= pool.target_amount:
+            if pool.current_balance >= pool.target_amount:
                 pool.status = 'COMPLETED'
                 print(f"🎉 POOL TARGET MET! Pool {pool.id} marked as COMPLETED.")
                 
@@ -250,7 +250,7 @@ class ValidateVoucherView(APIView):
         Marks the voucher as REDEEMED after the wholesaler hands over the goods.
         """
         from .models import QRVoucher
-        
+
         if not hasattr(request.user, 'is_approved_wholesaler') or not request.user.is_approved_wholesaler:
             return Response({"error": "Unauthorized. Your wholesaler account is pending admin approval."}, status=status.HTTP_403_FORBIDDEN)
         

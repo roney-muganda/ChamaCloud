@@ -22,8 +22,11 @@ export const CreatePoolForm: React.FC<CreatePoolFormProps> = ({ groupId, onPoolC
       return;
     }
 
+    // Automatically calculate contribution so the backend math passes
+    // We assume 3 members as the minimum threshold
+    const autoContribution = Math.ceil(amount / 3);
+
     try {
-      // Assuming your Django REST Framework creates pools via this endpoint
       const res = await fetch('https://chamacloud-api.onrender.com/api/pools/', {
         method: 'POST',
         headers: {
@@ -31,9 +34,9 @@ export const CreatePoolForm: React.FC<CreatePoolFormProps> = ({ groupId, onPoolC
           'Authorization': `Bearer ${localStorage.getItem('access_token')}`
         },
         body: JSON.stringify({
-          group_id: groupId,          // Changed from 'group' to 'group_id'
+          group_id: groupId,
           target_amount: amount,
-          contribution_per_member: 0, // Backend expects this!
+          contribution_per_member: autoContribution, // Calculated value
           deadline: "2026-12-31 23:59:59",
           status: 'OPEN'
         })
@@ -42,9 +45,10 @@ export const CreatePoolForm: React.FC<CreatePoolFormProps> = ({ groupId, onPoolC
       const data = await res.json();
 
       if (res.ok) {
-        setTargetAmount(''); // Clear form
-        onPoolCreated(); // Trigger a refresh of the group dashboard
+        setTargetAmount('');
+        onPoolCreated(); 
       } else {
+        // This will now show the specific error from the backend if it still fails
         setError(data.error || 'Failed to create the pool.');
       }
     } catch (err) {
