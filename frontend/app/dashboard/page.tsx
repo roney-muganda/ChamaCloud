@@ -34,8 +34,15 @@ export default function Dashboard() {
   const [vouchers, setVouchers] = useState<VoucherData[]>([]);
   const [loading, setLoading] = useState(true);
   const [globalError, setGlobalError] = useState<string | null>(null);
+  
+  // Form States
   const [invitePhone, setInvitePhone] = useState('');
   const [inviteStatus, setInviteStatus] = useState('');
+  
+  // Contribution States
+  const [isContributing, setIsContributing] = useState(false);
+  const [contributeAmount, setContributeAmount] = useState('');
+  const [isProcessing, setIsProcessing] = useState(false);
   const [paymentStatus, setPaymentStatus] = useState('');
 
   const fetchDashboardState = useCallback(async (showLoader = false) => {
@@ -96,8 +103,67 @@ export default function Dashboard() {
     return () => clearTimeout(initTimer);
   }, [fetchDashboardState]);
 
-  const handleInvite = async () => { /* ... existing invite logic ... */ };
-  const handleContribute = async () => { /* ... existing contribute logic ... */ };
+  // RESTORED: Invite Logic
+  const handleInvite = async () => {
+    if (!invitePhone) return;
+    setInviteStatus("Sending invite...");
+    try {
+      const token = localStorage.getItem('access_token');
+      const res = await fetch(`https://chamacloud-api.onrender.com/api/groups/${group?.id}/invite/`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ phone_number: invitePhone })
+      });
+      
+      if (res.ok) {
+        setInviteStatus("Invited successfully!");
+        setInvitePhone('');
+        fetchDashboardState(false);
+      } else {
+        const data = await res.json();
+        setInviteStatus(data.error || "Failed to invite.");
+      }
+    } catch {
+      setInviteStatus("Network error.");
+    }
+  };
+
+  // RESTORED: STK Push Logic
+  const submitContribution = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!contributeAmount || isNaN(Number(contributeAmount))) return;
+    
+    setIsProcessing(true);
+    setPaymentStatus('Initiating M-Pesa STK Push...');
+
+    try {
+      const token = localStorage.getItem('access_token');
+      const res = await fetch(`https://chamacloud-api.onrender.com/api/payments/pool/${poolData?.pool_id}/contribute/`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ amount: Number(contributeAmount) })
+      });
+
+      const data = await res.json();
+      if (res.ok) {
+        setPaymentStatus('STK Push sent to your phone! Please enter your PIN.');
+        setIsContributing(false);
+        setContributeAmount('');
+      } else {
+        setPaymentStatus(data.error || 'Payment failed.');
+      }
+    } catch {
+      setPaymentStatus('Network error. Please try again.');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
 
   if (loading) return <div className="min-h-screen flex items-center justify-center font-bold text-emerald-800">Loading...</div>;
   if (globalError) return <div className="min-h-screen flex items-center justify-center text-red-600">{globalError}</div>;
@@ -114,7 +180,7 @@ export default function Dashboard() {
           <p className="text-emerald-700 mb-6 font-medium">You need at least 3 members to start a pool. You currently have {group.member_count}.</p>
           <form onSubmit={(e) => { e.preventDefault(); handleInvite(); }} className="space-y-3">
             <input type="text" placeholder="Phone e.g. +254..." className="w-full p-3 bg-gray-50 rounded-xl border border-emerald-100 text-emerald-950 font-bold" value={invitePhone} onChange={(e) => setInvitePhone(e.target.value)} required />
-            <button className="w-full bg-emerald-800 text-lime-400 font-bold py-3 rounded-xl hover:bg-emerald-900">Invite Member</button>
+            <button type="submit" className="w-full bg-emerald-800 text-lime-400 font-bold py-3 rounded-xl hover:bg-emerald-900">Invite Member</button>
           </form>
           {inviteStatus && <p className="mt-4 text-sm font-bold text-emerald-600">{inviteStatus}</p>}
         </div>
@@ -129,7 +195,7 @@ export default function Dashboard() {
     const progressPercentage = Math.min((collected / target) * 100, 100);
 
     return (
-      <div className="max-w-md w-full bg-white rounded-[2rem] shadow-2xl p-8 border border-emerald-100">
+      <div className="max-w-md w-full bg-white rounded-[2rem] shadow-2xl p-8 border border-emerald-100 relative overflow-hidden">
         <div className="flex justify-between items-center mb-8">
           <h2 className="text-3xl font-black text-emerald-950 tracking-tighter leading-tight pr-4">{poolData.group_name}</h2>
           <div className="h-14 w-14 flex-shrink-0 bg-gradient-to-br from-emerald-100 to-lime-100 rounded-2xl flex items-center justify-center shadow-inner border border-emerald-200">
@@ -153,9 +219,45 @@ export default function Dashboard() {
             <div className="bg-gradient-to-r from-lime-400 to-emerald-400 h-full rounded-full transition-all duration-1000 ease-out shadow-lg" style={{ width: `${progressPercentage}%` }}></div>
           </div>
         </div>
-        <button onClick={handleContribute} className="w-full bg-lime-400 text-emerald-950 font-black text-xl py-5 rounded-2xl shadow-lg shadow-lime-200 hover:scale-[1.02] transition-all">
-          Contribute Now
-        </button>
+
+        {/* NEW: Smooth Contribution Form Toggle */}
+        {!isContributing ? (
+          <button onClick={() => setIsContributing(true)} className="w-full bg-lime-400 text-emerald-950 font-black text-xl py-5 rounded-2xl shadow-lg shadow-lime-200 hover:scale-[1.02] transition-all">
+            Contribute Now
+          </button>
+        ) : (
+          <form onSubmit={submitContribution} className="space-y-3 animate-in fade-in slide-in-from-bottom-2 duration-300">
+            <input 
+              type="number" 
+              placeholder="Amount to contribute (KES)" 
+              value={contributeAmount}
+              onChange={(e) => setContributeAmount(e.target.value)}
+              className="w-full bg-gray-50 border border-emerald-200 rounded-xl p-4 text-emerald-900 text-center font-bold focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none"
+              required
+              min="1"
+            />
+            <button 
+              type="submit"
+              disabled={isProcessing}
+              className="w-full bg-emerald-800 text-lime-400 font-black text-lg py-4 rounded-xl shadow-lg hover:bg-emerald-900 transition-all duration-300 disabled:opacity-50"
+            >
+              {isProcessing ? 'Processing...' : 'Send M-Pesa Prompt'}
+            </button>
+            <button 
+              type="button"
+              onClick={() => setIsContributing(false)}
+              className="text-gray-400 font-bold text-sm hover:text-emerald-700 transition-colors block w-full text-center mt-2"
+            >
+              Cancel
+            </button>
+          </form>
+        )}
+        
+        {paymentStatus && (
+          <p className="mt-6 text-center text-sm font-bold text-emerald-700 bg-emerald-50 p-3 rounded-lg border border-emerald-100">
+            {paymentStatus}
+          </p>
+        )}
       </div>
     );
   };
@@ -168,7 +270,7 @@ export default function Dashboard() {
         {renderMainContent()}
       </div>
 
-      {/* NEW: Voucher Wallet Sidebar */}
+      {/* Voucher Wallet Sidebar */}
       <div className="w-96 bg-white border-l border-emerald-100 shadow-2xl flex flex-col hidden lg:flex">
         <div className="p-6 border-b border-emerald-50 bg-emerald-900 text-white">
           <h2 className="text-2xl font-black tracking-tighter">Voucher Wallet</h2>

@@ -153,7 +153,7 @@ class DarajaCallbackView(APIView):
                 print(f"🎉 POOL TARGET MET! Pool {pool.id} marked as COMPLETED.")
                 
             pool.save()
-            print(f"✅ Success! Local payment record updated. Receipt: {mpesa_receipt}, Pool Balance: KES {pool.collected}")
+            print(f"✅ Success! Local payment record updated. Receipt: {mpesa_receipt}, Pool Balance: KES {pool.current_balance}")
 
             if pool.status == 'COMPLETED':
                 from .models import QRVoucher
