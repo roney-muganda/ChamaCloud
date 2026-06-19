@@ -1,6 +1,5 @@
 import re
 import uuid
-from django.utils import timezone
 from django.db.models import Q
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -23,20 +22,17 @@ class VerifyVoucherView(APIView):
                 status=status.HTTP_403_FORBIDDEN
             )
 
-        # 1. Base query: Check exact fallback code
+        # Secure lookup supporting exact code, VOUCHER-prefix, or raw UUID
         query = Q(fallback_code=code)
-        
-        # 2. If they typed "VOUCHER-123", extract "123" and check fallback code
         match = re.search(r'\d+', str(code))
         if match:
             query |= Q(fallback_code=match.group())
 
-        # 3. SAFE UUID CHECK: Only query the 'id' field if the code is actually a valid UUID
         try:
             valid_uuid = uuid.UUID(str(code))
             query |= Q(id=valid_uuid)
         except ValueError:
-            pass # Not a UUID, safely ignore
+            pass 
 
         voucher = QRVoucher.objects.filter(query).first()
 
@@ -46,33 +42,28 @@ class VerifyVoucherView(APIView):
                 status=status.HTTP_404_NOT_FOUND
             )
 
-        amount = getattr(voucher, 'amount', getattr(voucher.pool, 'target_amount', 0) if hasattr(voucher, 'pool') else 0)
-        
-        group_name = "Chama Group"
-        vendor_name = "Vendor"
-        
-        if getattr(voucher, 'pool', None) and getattr(voucher.pool, 'group', None):
-            group_name = voucher.pool.group.name
-            if getattr(voucher.pool.group, 'admin', None):
-                vendor_name = voucher.pool.group.admin.username
+        # Trigger your model's built-in expiry check
+        voucher.is_valid()
 
-        status_label = "REDEEMED" if voucher.is_claimed else "ACTIVE"
-        display_code = getattr(voucher, 'fallback_code', f"VOUCHER-{str(voucher.id)[:8]}")
+        group_name = voucher.pool.group.name if getattr(voucher, 'pool', None) else "Chama Group"
+        
+        # Map your model's 'AVAILABLE' state to the frontend's 'ACTIVE' styling
+        frontend_status = "ACTIVE" if voucher.status == 'AVAILABLE' else voucher.status
 
         return Response({
-            "code": display_code,
-            "amount": amount,
+            "code": voucher.fallback_code,
+            "amount": voucher.amount,
             "group_name": group_name,
-            "vendor_name": vendor_name,
-            "status": status_label,
-            "created_at": voucher.created_at.strftime("%Y-%m-%d %H:%M")
+            "vendor_name": voucher.vendor.username if voucher.vendor else "Vendor",
+            "status": frontend_status,
+            "created_at": voucher.created_at.strftime("%b %d, %Y %H:%M")
         }, status=status.HTTP_200_OK)
 
 
 class RedeemVoucherView(APIView):
     """
     POST /api/vouchers/<code>/redeem/
-    Marks an ACTIVE voucher as claimed.
+    Marks an AVAILABLE voucher as REDEEMED.
     """
     permission_classes = [IsAuthenticated]
 
@@ -102,50 +93,47 @@ class RedeemVoucherView(APIView):
                 status=status.HTTP_404_NOT_FOUND
             )
 
-        if voucher.is_claimed:
+        # Use your model's built-in logic to ensure it hasn't expired or been used
+        if not voucher.is_valid() or voucher.status != 'AVAILABLE':
             return Response(
-                {"error": "This voucher has already been redeemed."}, 
+                {"error": f"This voucher cannot be redeemed. Current status is {voucher.status}."}, 
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        voucher.is_claimed = True
-        voucher.claimed_by = request.user
-        voucher.claimed_at = timezone.now()
+        # Flip the explicit status field
+        voucher.status = 'REDEEMED'
         voucher.save()
-
-        amount = getattr(voucher, 'amount', getattr(voucher.pool, 'target_amount', 0) if hasattr(voucher, 'pool') else 0)
 
         return Response({
             "message": "Payment complete! Goods can now be released.",
-            "amount": amount
+            "amount": voucher.amount
         }, status=status.HTTP_200_OK)
+
 
 class VendorVoucherListView(APIView):
     """
     GET /api/vouchers/my-vouchers/
-    Returns all vouchers (both ACTIVE and REDEEMED) for the authenticated vendor's groups.
+    Returns all vouchers for the authenticated vendor's UI Wallet.
     """
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        # Find all vouchers linked to pools where the user is a group member
-        # Assuming QRVoucher is in the payments app based on our last fix
-        from payments.models import QRVoucher 
-        
-        vouchers = QRVoucher.objects.filter(
-            pool__group__members__vendor=request.user
-        ).order_by('-created_at')
+        # We can query the vendor directly since your model explicitly links it!
+        vouchers = QRVoucher.objects.filter(vendor=request.user).order_by('-created_at')
 
         data = []
         for v in vouchers:
-            amount = getattr(v, 'amount', getattr(v.pool, 'target_amount', 0) if hasattr(v, 'pool') else 0)
-            group_name = v.pool.group.name if getattr(v, 'pool', None) and getattr(v.pool, 'group', None) else "Chama Group"
+            # Trigger expiry check quietly before sending data to UI
+            v.is_valid()
             
+            group_name = v.pool.group.name if getattr(v, 'pool', None) else "Chama Group"
+            frontend_status = "ACTIVE" if v.status == 'AVAILABLE' else v.status
+
             data.append({
                 "id": str(v.id),
-                "code": getattr(v, 'fallback_code', f"VOUCHER-{str(v.id)[:8]}"),
-                "amount": amount,
-                "status": "REDEEMED" if v.is_claimed else "ACTIVE",
+                "code": v.fallback_code,
+                "amount": v.amount,
+                "status": frontend_status,
                 "group_name": group_name,
                 "created_at": v.created_at.strftime("%b %d, %Y")
             })
