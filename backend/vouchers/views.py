@@ -1,14 +1,18 @@
+import re
+from django.utils import timezone
+from django.db.models import Q
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
-from django.shortcuts import get_object_or_404
-from .models import QRVoucher
+
+# CRITICAL FIX: Importing the correct model from the payments app!
+from payments.models import QRVoucher
 
 class VerifyVoucherView(APIView):
     """
     GET /api/vouchers/<code>/verify/
-    Looks up a voucher by its unique code and returns the details.
+    Looks up a voucher by its fallback_code or ID and returns details.
     """
     permission_classes = [IsAuthenticated]
 
@@ -20,19 +24,44 @@ class VerifyVoucherView(APIView):
                 status=status.HTTP_403_FORBIDDEN
             )
 
-        # Find the voucher (returns 404 automatically if it doesn't exist)
-        voucher = get_object_or_404(QRVoucher, code=code)
+        # Look up by the exact fallback_code, OR extract the ID if they entered "VOUCHER-12"
+        query = Q(fallback_code=code)
+        match = re.search(r'\d+', str(code))
+        if match:
+            query |= Q(id=match.group())
+        
+        # Filter and get the first matching voucher
+        voucher = QRVoucher.objects.filter(query).first()
 
-        # Safely extract related data (assuming your QRVoucher is linked to a pool/group)
-        group_name = voucher.pool.group.name if hasattr(voucher, 'pool') and hasattr(voucher.pool, 'group') else "Chama Group"
-        vendor_name = voucher.pool.group.admin.username if hasattr(voucher, 'pool') and hasattr(voucher.pool.group, 'admin') else "Admin"
+        if not voucher:
+            return Response(
+                {"error": "Voucher not found or invalid."}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        # Safely map related fields (amount might be directly on voucher or via pool)
+        amount = getattr(voucher, 'amount', getattr(voucher.pool, 'target_amount', 0) if hasattr(voucher, 'pool') else 0)
+        
+        group_name = "Chama Group"
+        vendor_name = "Vendor"
+        
+        if getattr(voucher, 'pool', None) and getattr(voucher.pool, 'group', None):
+            group_name = voucher.pool.group.name
+            if getattr(voucher.pool.group, 'admin', None):
+                vendor_name = voucher.pool.group.admin.username
+
+        # Map 'is_claimed' to the frontend's 'status' string expectation
+        status_label = "REDEEMED" if voucher.is_claimed else "ACTIVE"
+
+        # Use fallback_code if it exists, otherwise generate a display code
+        display_code = getattr(voucher, 'fallback_code', f"VOUCHER-{voucher.id}")
 
         return Response({
-            "code": voucher.code,
-            "amount": voucher.amount,
+            "code": display_code,
+            "amount": amount,
             "group_name": group_name,
             "vendor_name": vendor_name,
-            "status": voucher.status,
+            "status": status_label,
             "created_at": voucher.created_at.strftime("%Y-%m-%d %H:%M")
         }, status=status.HTTP_200_OK)
 
@@ -40,7 +69,7 @@ class VerifyVoucherView(APIView):
 class RedeemVoucherView(APIView):
     """
     POST /api/vouchers/<code>/redeem/
-    Marks an ACTIVE voucher as REDEEMED and associates it with the wholesaler.
+    Marks an ACTIVE voucher as claimed and records the wholesaler who processed it.
     """
     permission_classes = [IsAuthenticated]
 
@@ -52,28 +81,37 @@ class RedeemVoucherView(APIView):
                 status=status.HTTP_403_FORBIDDEN
             )
 
-        voucher = get_object_or_404(QRVoucher, code=code)
+        # Look up by fallback_code or extracted ID
+        query = Q(fallback_code=code)
+        match = re.search(r'\d+', str(code))
+        if match:
+            query |= Q(id=match.group())
+        
+        voucher = QRVoucher.objects.filter(query).first()
 
-        # State machine check: Prevent double-spending
-        if voucher.status != 'ACTIVE':
+        if not voucher:
             return Response(
-                {"error": f"This voucher cannot be redeemed. It is currently marked as {voucher.status}."}, 
+                {"error": "Voucher not found."}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        # State machine check using the actual 'is_claimed' boolean
+        if voucher.is_claimed:
+            return Response(
+                {"error": "This voucher has already been redeemed."}, 
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # Flip the status
-        voucher.status = 'REDEEMED'
-        
-        # Optional but highly recommended: Log exactly who redeemed it
-        if hasattr(voucher, 'redeemed_by_id'):
-            voucher.redeemed_by = request.user.wholesaler
-
+        # Flip the status and record the wholesaler
+        voucher.is_claimed = True
+        voucher.claimed_by = request.user
+        voucher.claimed_at = timezone.now()
         voucher.save()
 
-        # NOTE: If you have a 'wallet' or 'pending_payout' field on your Wholesaler model, 
-        # you would add `voucher.amount` to it right here before returning the response!
+        # Get the amount
+        amount = getattr(voucher, 'amount', getattr(voucher.pool, 'target_amount', 0) if hasattr(voucher, 'pool') else 0)
 
         return Response({
             "message": "Payment complete! Goods can now be released.",
-            "amount": voucher.amount
+            "amount": amount
         }, status=status.HTTP_200_OK)
