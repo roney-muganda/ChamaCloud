@@ -161,7 +161,17 @@ export default function Dashboard() {
     }
     
     if (group.member_count < 3) {
-      return <div className="p-8 text-center text-emerald-950 font-bold">Group needs at least 3 members to start a pool.</div>;
+      return (
+        <div className="bg-white p-8 rounded-3xl shadow-xl max-w-sm w-full text-center border border-emerald-100">
+          <h2 className="text-2xl font-black text-emerald-950 mb-2">Grow the Chama!</h2>
+          <p className="text-emerald-700 mb-6 font-medium">You need at least 3 members to start a pool. You currently have {group.member_count}.</p>
+          <form onSubmit={(e) => { e.preventDefault(); handleInvite(); }} className="space-y-3">
+            <input type="text" placeholder="Phone e.g. +254..." className="w-full p-3 bg-gray-50 rounded-xl border border-emerald-100 text-emerald-950 font-bold" value={invitePhone} onChange={(e) => setInvitePhone(e.target.value)} required />
+            <button type="submit" className="w-full bg-emerald-800 text-lime-400 font-bold py-3 rounded-xl hover:bg-emerald-900 transition-colors">Invite Member</button>
+          </form>
+          {inviteStatus && <p className="mt-4 text-sm font-bold text-emerald-600">{inviteStatus}</p>}
+        </div>
+      );
     }
     
     if (!poolData) {
