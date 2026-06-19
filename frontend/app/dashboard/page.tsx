@@ -35,10 +35,16 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [globalError, setGlobalError] = useState<string | null>(null);
   
+  // Navigation & User State
   const [mobileTab, setMobileTab] = useState<'dashboard' | 'wallet'>('dashboard');
   const [currentUser, setCurrentUser] = useState<string>('Vendor');
   const [showNewGroupForm, setShowNewGroupForm] = useState(false);
   
+  // RESTORED: Invite Form States
+  const [invitePhone, setInvitePhone] = useState('');
+  const [inviteStatus, setInviteStatus] = useState('');
+  
+  // Contribution States
   const [isContributing, setIsContributing] = useState(false);
   const [contributeAmount, setContributeAmount] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
@@ -107,6 +113,34 @@ export default function Dashboard() {
     };
     runFetch();
   }, [fetchDashboardState]);
+
+  // RESTORED: Invite Logic Function
+  const handleInvite = async () => {
+    if (!invitePhone) return;
+    setInviteStatus("Sending invite...");
+    try {
+      const token = localStorage.getItem('access_token');
+      const res = await fetch(`https://chamacloud-api.onrender.com/api/groups/${group?.id}/invite/`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ phone_number: invitePhone })
+      });
+      
+      if (res.ok) {
+        setInviteStatus("Invited successfully!");
+        setInvitePhone('');
+        fetchDashboardState(false);
+      } else {
+        const data = await res.json();
+        setInviteStatus(data.error || "Failed to invite.");
+      }
+    } catch {
+      setInviteStatus("Network error.");
+    }
+  };
 
   const submitContribution = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -257,7 +291,7 @@ export default function Dashboard() {
       </div>
 
       <div className={`w-full lg:w-96 bg-white border-l border-emerald-100 shadow-2xl flex-col ${mobileTab === 'wallet' ? 'flex h-full' : 'hidden lg:flex'} pb-20 lg:pb-0 z-10`}>
-        <div className="p-6 border-b border-emerald-50 bg-emerald-900 text-white flex-shrink-0">
+        <div className="p-6 border-b border-emerald-50 bg-emerald-900 text-white shrink-0">
           <h2 className="text-2xl font-black tracking-tighter">Voucher Wallet</h2>
           <p className="text-emerald-300 text-sm font-medium mt-1">Your purchasing power.</p>
         </div>
