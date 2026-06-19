@@ -1,4 +1,5 @@
 import re
+import uuid
 from django.utils import timezone
 from django.db.models import Q
 from rest_framework.views import APIView
@@ -6,31 +7,37 @@ from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 
-# CRITICAL FIX: Importing the correct model from the payments app!
 from payments.models import QRVoucher
 
 class VerifyVoucherView(APIView):
     """
     GET /api/vouchers/<code>/verify/
-    Looks up a voucher by its fallback_code or ID and returns details.
+    Looks up a voucher by its fallback_code or UUID and returns details.
     """
     permission_classes = [IsAuthenticated]
 
     def get(self, request, code):
-        # SECURITY GATE: Only approved wholesalers can verify vouchers
         if not getattr(request.user, 'is_approved_wholesaler', False):
             return Response(
                 {"error": "Access denied. Only approved wholesalers can scan vouchers."}, 
                 status=status.HTTP_403_FORBIDDEN
             )
 
-        # Look up by the exact fallback_code, OR extract the ID if they entered "VOUCHER-12"
+        # 1. Base query: Check exact fallback code
         query = Q(fallback_code=code)
+        
+        # 2. If they typed "VOUCHER-123", extract "123" and check fallback code
         match = re.search(r'\d+', str(code))
         if match:
-            query |= Q(id=match.group())
-        
-        # Filter and get the first matching voucher
+            query |= Q(fallback_code=match.group())
+
+        # 3. SAFE UUID CHECK: Only query the 'id' field if the code is actually a valid UUID
+        try:
+            valid_uuid = uuid.UUID(str(code))
+            query |= Q(id=valid_uuid)
+        except ValueError:
+            pass # Not a UUID, safely ignore
+
         voucher = QRVoucher.objects.filter(query).first()
 
         if not voucher:
@@ -39,7 +46,6 @@ class VerifyVoucherView(APIView):
                 status=status.HTTP_404_NOT_FOUND
             )
 
-        # Safely map related fields (amount might be directly on voucher or via pool)
         amount = getattr(voucher, 'amount', getattr(voucher.pool, 'target_amount', 0) if hasattr(voucher, 'pool') else 0)
         
         group_name = "Chama Group"
@@ -50,11 +56,8 @@ class VerifyVoucherView(APIView):
             if getattr(voucher.pool.group, 'admin', None):
                 vendor_name = voucher.pool.group.admin.username
 
-        # Map 'is_claimed' to the frontend's 'status' string expectation
         status_label = "REDEEMED" if voucher.is_claimed else "ACTIVE"
-
-        # Use fallback_code if it exists, otherwise generate a display code
-        display_code = getattr(voucher, 'fallback_code', f"VOUCHER-{voucher.id}")
+        display_code = getattr(voucher, 'fallback_code', f"VOUCHER-{str(voucher.id)[:8]}")
 
         return Response({
             "code": display_code,
@@ -69,23 +72,27 @@ class VerifyVoucherView(APIView):
 class RedeemVoucherView(APIView):
     """
     POST /api/vouchers/<code>/redeem/
-    Marks an ACTIVE voucher as claimed and records the wholesaler who processed it.
+    Marks an ACTIVE voucher as claimed.
     """
     permission_classes = [IsAuthenticated]
 
     def post(self, request, code):
-        # SECURITY GATE: Only approved wholesalers can redeem vouchers
         if not getattr(request.user, 'is_approved_wholesaler', False):
             return Response(
                 {"error": "Access denied. Only approved wholesalers can redeem vouchers."}, 
                 status=status.HTTP_403_FORBIDDEN
             )
 
-        # Look up by fallback_code or extracted ID
         query = Q(fallback_code=code)
         match = re.search(r'\d+', str(code))
         if match:
-            query |= Q(id=match.group())
+            query |= Q(fallback_code=match.group())
+
+        try:
+            valid_uuid = uuid.UUID(str(code))
+            query |= Q(id=valid_uuid)
+        except ValueError:
+            pass 
         
         voucher = QRVoucher.objects.filter(query).first()
 
@@ -95,20 +102,17 @@ class RedeemVoucherView(APIView):
                 status=status.HTTP_404_NOT_FOUND
             )
 
-        # State machine check using the actual 'is_claimed' boolean
         if voucher.is_claimed:
             return Response(
                 {"error": "This voucher has already been redeemed."}, 
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # Flip the status and record the wholesaler
         voucher.is_claimed = True
         voucher.claimed_by = request.user
         voucher.claimed_at = timezone.now()
         voucher.save()
 
-        # Get the amount
         amount = getattr(voucher, 'amount', getattr(voucher.pool, 'target_amount', 0) if hasattr(voucher, 'pool') else 0)
 
         return Response({
