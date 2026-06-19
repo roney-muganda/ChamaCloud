@@ -13,6 +13,7 @@ class PoolCreateView(APIView):
     def post(self, request):
         # 1. Catch both React's camelCase and Django's snake_case
         group_id = request.data.get("group_id") or request.data.get("groupId")
+        wholesaler_id = request.data.get("wholesaler_id")
         target_amount = float(request.data.get("target_amount", 0))
         contribution_per_member = float(request.data.get("contribution_per_member", 0))
         deadline = request.data.get("deadline") 
@@ -20,11 +21,19 @@ class PoolCreateView(APIView):
         if not group_id:
             return Response({"error": "Group ID is missing from the request."}, status=status.HTTP_400_BAD_REQUEST)
 
+        if not wholesaler_id:
+            return Response({"error": "Please select a Wholesaler for this pool."}, status=status.HTTP_400_BAD_REQUEST)
+
         try:
             # 2. Allow ANY member of the group to start the next funding round, not just the admin
             group = VendorGroup.objects.get(id=group_id, members__vendor=request.user)
         except VendorGroup.DoesNotExist:
             return Response({"error": "Group not found or unauthorized"}, status=status.HTTP_403_FORBIDDEN)
+
+        try:
+            wholesaler = Wholesaler.objects.get(id=wholesaler_id)
+        except Wholesaler.DoesNotExist:
+            return Response({"error": "Invalid Wholesaler selected."}, status=status.HTTP_400_BAD_REQUEST)
 
         # Enforce minimum 3 members
         member_count = group.members.count()
@@ -42,12 +51,28 @@ class PoolCreateView(APIView):
         # Create the Pool
         pool = Pool.objects.create(
             group=group,
+            wholesaler=wholesaler,
             target_amount=target_amount,
             deadline=deadline,
             status='OPEN'
         )
         
         return Response({"message": "Pool created successfully", "pool_id": pool.id}, status=status.HTTP_201_CREATED)
+
+class WholesalerListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        # Fetch all approved wholesalers
+        wholesalers = Wholesaler.objects.all() # Add .filter(is_approved=True) if you have that field!
+        
+        # Safely extract a display name (adjust 'business_name' based on your actual model field)
+        data = []
+        for w in wholesalers:
+            name = getattr(w, 'business_name', str(w))
+            data.append({"id": w.id, "name": name})
+            
+        return Response(data, status=status.HTTP_200_OK)
 
 
 class PoolStatusView(APIView):
