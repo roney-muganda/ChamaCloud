@@ -5,7 +5,6 @@ class User(AbstractUser):
     # Using phone number as the primary identifier
     phone_number = models.CharField(max_length=15, unique=True)
     is_vendor = models.BooleanField(default=True)
-    is_wholesaler = models.BooleanField(default=False)
     is_feature_phone = models.BooleanField(
         default=False, 
         help_text="If True, the system will automatically send SMS fallback vouchers to this user."
@@ -34,3 +33,21 @@ class Wholesaler(models.Model):
 
     def __str__(self):
         return self.business_name
+
+
+class WholesalerApplication(models.Model):
+    STATUS_CHOICES = [
+        ('PENDING', 'Pending'),
+        ('APPROVED', 'Approved'),
+        ('REJECTED', 'Rejected')
+    ]
+
+    business_name = models.CharField(max_length=255)
+    phone = models.CharField(max_length=20)
+    location = models.CharField(max_length=255)
+    product_categories = models.TextField(blank=True, null=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDING')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.business_name} ({self.status})"

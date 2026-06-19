@@ -14,7 +14,8 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import get_user_model
 from django.http import HttpResponse, JsonResponse
 from django.views.decorators.http import require_http_methods
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, AllowAny
+from .models import WholesalerApplication
 
 User = get_user_model()
 
@@ -143,3 +144,40 @@ def health_check(request):
         "service": "chama-cloud-api",
         "version": "1.0.0"
     }, status=200)
+
+
+class WholesalerApplicationView(APIView):
+    """
+    URL: /api/wholesalers/apply/
+    Catches public wholesaler applications from the landing page.
+    """
+    permission_classes = [AllowAny] # Anyone can apply
+
+    def post(self, request):
+        business_name = request.data.get('businessName')
+        phone = request.data.get('phone')
+        location = request.data.get('location')
+        product_categories = request.data.get('productCategories', '')
+
+        if not business_name or not phone or not location:
+            return Response(
+                {"error": "Business name, phone, and location are required."}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            clean_phone = normalize_phone(phone)
+        except Exception:
+            clean_phone = phone 
+
+        application = WholesalerApplication.objects.create(
+            business_name=business_name,
+            phone=clean_phone,
+            location=location,
+            product_categories=product_categories
+        )
+
+        return Response({
+            "message": "Application received successfully!",
+            "application_id": application.id
+        }, status=status.HTTP_201_CREATED)
