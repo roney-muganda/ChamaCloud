@@ -13,6 +13,14 @@ class PoolCreateView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
+
+        has_active_pool = Pool.objects.filter(group__members__vendor=request.user, status='OPEN').exists()
+        if has_active_pool:
+            return Response(
+                {"error": "You already have an active pool in another Chama. Please complete it first."}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+            
         # 1. Catch both React's camelCase and Django's snake_case
         group_id = request.data.get("group_id") or request.data.get("groupId")
         wholesaler_id = request.data.get("wholesaler_id")
@@ -103,43 +111,36 @@ class PoolStatusView(APIView):
 class ActivePoolView(APIView):
     """
     Dynamically fetches the OPEN pool for the currently authenticated user.
-    No hardcoded IDs required.
+    Filters by group_id if provided.
     """
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        try:
-            # Find the OPEN pool linked to the group the user is a member of
-            pool = Pool.objects.get(group__members__vendor=request.user, status='OPEN')
+        group_id = request.query_params.get('group_id')
+        
+        # Start with all OPEN pools for this user
+        pools = Pool.objects.filter(group__members__vendor=request.user, status='OPEN')
+        
+        # If the frontend asks for a specific group's pool, filter it down!
+        if group_id:
+            pools = pools.filter(group_id=group_id)
             
-            remaining = float(pool.target_amount) - float(pool.current_balance)
-            
+        pool = pools.first()
+        
+        if not pool:
             return Response({
-                "pool_id": pool.id,
-                "group_id": pool.group.id,  
-                "group_name": pool.group.name,
-                "target_amount": pool.target_amount,
-                "collected": pool.current_balance,
-                "remaining": max(0, remaining),
-                "status": pool.status,
-                "deadline": pool.deadline
-            }, status=status.HTTP_200_OK)
-            
-        except Pool.DoesNotExist:
-            return Response({
-                "error": "You do not have an active pool right now."
+                "error": "You do not have an active pool for this group right now."
             }, status=status.HTTP_404_NOT_FOUND)
             
-        except Pool.MultipleObjectsReturned:
-            pool = Pool.objects.filter(group__members__vendor=request.user, status='OPEN').first()
-            remaining = float(pool.target_amount) - float(pool.current_balance)
-            return Response({
-                "pool_id": pool.id,
-                "group_id": pool.group.id,  
-                "group_name": pool.group.name,
-                "target_amount": pool.target_amount,
-                "collected": pool.current_balance,
-                "remaining": max(0, remaining),
-                "status": pool.status,
-                "deadline": pool.deadline
-            }, status=status.HTTP_200_OK)
+        remaining = float(pool.target_amount) - float(pool.current_balance)
+        
+        return Response({
+            "pool_id": pool.id,
+            "group_id": pool.group.id,  
+            "group_name": pool.group.name,
+            "target_amount": pool.target_amount,
+            "collected": pool.current_balance,
+            "remaining": max(0, remaining),
+            "status": pool.status,
+            "deadline": pool.deadline
+        }, status=status.HTTP_200_OK)
