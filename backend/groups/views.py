@@ -31,6 +31,12 @@ class GroupCreateView(APIView):
         if not name:
             return Response({"error": "Group name is required"}, status=status.HTTP_400_BAD_REQUEST)
         
+        if VendorGroup.objects.filter(name__iexact=name).exists():
+            return Response(
+                {"error": f"A group named '{name}' already exists. Please choose a unique name."}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+            
         # FR-V-010: Create group, creator becomes admin
         group = VendorGroup.objects.create(name=name, admin=request.user)
         

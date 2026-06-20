@@ -137,13 +137,26 @@ export default function Dashboard() {
   const handleInvite = async () => {
     if (!invitePhone) return;
     setInviteStatus("Sending invite...");
+    
+    // 1. Auto-format 07xx to +2547xx for the backend
+    let formattedPhone = invitePhone.trim();
+    if (formattedPhone.startsWith('0')) {
+      formattedPhone = '+254' + formattedPhone.slice(1);
+    } else if (formattedPhone.startsWith('254')) {
+      formattedPhone = '+' + formattedPhone;
+    } else if (!formattedPhone.startsWith('+')) {
+      formattedPhone = '+254' + formattedPhone;
+    }
+
     try {
       const token = localStorage.getItem('access_token');
       const res = await fetch(`https://chamacloud-api.onrender.com/api/groups/${group?.id}/invite/`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone_number: invitePhone })
+        // 2. Send as an array (phone_numbers) to satisfy the backend
+        body: JSON.stringify({ phone_numbers: [formattedPhone], phone_number: formattedPhone }) 
       });
+      
       if (res.ok) {
         setInviteStatus("Invited successfully!");
         setInvitePhone('');
