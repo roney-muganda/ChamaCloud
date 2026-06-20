@@ -78,7 +78,7 @@ MIDDLEWARE = [
 
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
-    "https://your-vercel-domain.vercel.app",
+    "https://chamacloud.vercel.app",
 ]
 
 AUTHENTICATION_BACKENDS = [
