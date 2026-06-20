@@ -2,6 +2,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { CreatePoolForm } from '../../components/pools/CreatePoolForm';
 import { CreateGroupForm } from '../../components/groups/CreateGroupForm';
+import QRCode from "react-qr-code";
 
 interface PoolData {
   pool_id?: number;
@@ -315,20 +316,50 @@ export default function Dashboard() {
           {vouchers.length === 0 ? (
              <p className="text-center text-sm font-bold text-gray-400 mt-10">No vouchers yet.</p>
           ) : (
-            vouchers.map(v => (
-              <div key={v.id} className={`p-5 rounded-2xl border ${v.status === 'ACTIVE' ? 'bg-white border-lime-400 shadow-lg' : 'bg-gray-100 border-gray-200 opacity-60'}`}>
-                <div className="flex justify-between items-start mb-2">
-                  <span className={`text-xs font-black uppercase tracking-widest px-2 py-1 rounded-md ${v.status === 'ACTIVE' ? 'bg-lime-100 text-lime-800' : 'bg-gray-200 text-gray-600'}`}>{v.status}</span>
-                  <span className="text-xs font-bold text-gray-400">{v.created_at}</span>
+            vouchers.map(v => {
+              // Create the WhatsApp share message
+              const shareMessage = `Hello! Here is my Chama voucher code for ${v.group_name}. \n\nAmount: KES ${v.amount}\nCode: ${v.code}\n\nPlease scan my QR code or enter this ID in the portal.`;
+              const whatsappLink = `https://wa.me/?text=${encodeURIComponent(shareMessage)}`;
+
+              return (
+                <div key={v.id} className={`p-5 rounded-2xl border ${v.status === 'ACTIVE' ? 'bg-white border-lime-400 shadow-lg' : 'bg-gray-100 border-gray-200 opacity-60'}`}>
+                  <div className="flex justify-between items-start mb-2">
+                    <span className={`text-xs font-black uppercase tracking-widest px-2 py-1 rounded-md ${v.status === 'ACTIVE' ? 'bg-lime-100 text-lime-800' : 'bg-gray-200 text-gray-600'}`}>{v.status}</span>
+                    <span className="text-xs font-bold text-gray-400">{v.created_at}</span>
+                  </div>
+                  <h3 className="text-3xl font-black tracking-tighter text-emerald-950 my-2">KES {v.amount}</h3>
+                  <p className="text-sm font-bold text-emerald-700 mb-4">{v.group_name}</p>
+                  
+                  {/* NEW: Actual Scannable QR Code */}
+                  <div className="bg-white p-3 rounded-xl border border-gray-100 flex justify-center mb-4 shadow-sm">
+                    <QRCode 
+                      value={v.code} 
+                      size={120} 
+                      level="H" 
+                      fgColor={v.status === 'ACTIVE' ? "#064e3b" : "#9ca3af"} 
+                    />
+                  </div>
+
+                  <div className="mt-4 p-3 bg-gray-50 rounded-xl border border-dashed border-gray-300 text-center mb-3">
+                    <p className="text-xs text-gray-500 font-bold uppercase tracking-wider mb-1">Redemption Code</p>
+                    <p className="font-mono font-black text-lg text-emerald-900 tracking-widest">{v.code}</p>
+                  </div>
+
+                  {/* NEW: WhatsApp Share Deep Link */}
+                  {v.status === 'ACTIVE' && (
+                    <a 
+                      href={whatsappLink} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="w-full bg-emerald-100 text-emerald-800 font-bold py-2.5 rounded-xl flex items-center justify-center gap-2 hover:bg-emerald-200 transition-colors text-sm"
+                    >
+                      <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M12.031 6.172c-3.181 0-5.767 2.586-5.768 5.766-.001 1.298.38 2.27 1.019 3.287l-.582 2.128 2.182-.573c.978.58 1.911.928 3.145.929 3.178 0 5.767-2.587 5.768-5.766.001-3.187-2.575-5.77-5.764-5.771zm3.392 8.244c-.144.405-.837.774-1.17.824-.299.045-.677.063-1.092-.125-.339-.153-1.127-.414-2.146-1.328-.731-.655-1.226-1.465-1.37-1.713-.143-.248-.015-.382.108-.504.108-.108.239-.279.359-.418.119-.14.159-.239.239-.399.08-.159.04-.299-.02-.418-.06-.119-.486-1.173-.666-1.606-.175-.42-.353-.362-.482-.369l-.41-.007c-.159 0-.418.06-.637.299-.219.239-.837.818-.837 1.995 0 1.177.857 2.315.976 2.475.12.16 1.688 2.579 4.092 3.568 1.956.804 2.391.638 2.83.6.438-.039 1.414-.578 1.613-1.137.199-.56.199-1.04.14-1.138-.059-.098-.219-.157-.458-.277z"/></svg>
+                      Share via WhatsApp
+                    </a>
+                  )}
                 </div>
-                <h3 className="text-3xl font-black tracking-tighter text-emerald-950 my-2">KES {v.amount}</h3>
-                <p className="text-sm font-bold text-emerald-700">{v.group_name}</p>
-                <div className="mt-4 p-3 bg-gray-50 rounded-xl border border-dashed border-gray-300 text-center">
-                  <p className="text-xs text-gray-500 font-bold uppercase tracking-wider mb-1">Redemption Code</p>
-                  <p className="font-mono font-black text-lg text-emerald-900 tracking-widest">{v.code}</p>
-                </div>
-              </div>
-            ))
+              );
+            })
           )}
         </div>
       </div>
